@@ -1,0 +1,13 @@
+{
+  "name": "isearch-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Локальный демо-сервер iSearch (Node.js без внешних пакетов)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

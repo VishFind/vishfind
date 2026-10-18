@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>iSearch — поиск редкой одежды</title>
+  <meta name="description" content="Опишите вещь обычным языком — iSearch разберёт запрос и откроет поиск на площадках. Цены и наличие смотрите на месте."/>
+  <meta name="robots" content="index, follow"/>
+  <link rel="icon" href="images/favicon.svg" type="image/svg+xml"/>
+  <meta property="og:type" content="website"/>
+  <meta property="og:title" content="iSearch — поиск редкой одежды"/>
+  <meta property="og:description" content="Найдём куртку, которую не гуглится. Переходы на поиск площадок — без выдуманных цен."/>
+  <meta property="og:locale" content="ru_RU"/>
+  <link rel="stylesheet" href="css/fonts.css"/>
+  <link rel="stylesheet" href="css/site.css"/>
+</head>
+<body>
+  <a class="skip-link" href="#search">К поиску</a>
+
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/">iSearch</a>
+      <nav class="nav" aria-label="Основное">
+        <a href="/" aria-current="page">Поиск</a>
+        <a href="/about.html">О проекте</a>
+        <a href="/contacts.html">Контакты</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <p class="hero-kicker">Каталог · архив · площадки</p>
+        <h1>Найдём куртку, которую не гуглится</h1>
+        <p class="hero-lead">Опишите вещь своими словами или приложите фото. Мы соберём поисковую фразу и отправим вас на площадки.</p>
+
+        <div class="search-box" id="search">
+          <div class="search-row">
+            <label class="visually-hidden" for="q" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Запрос</label>
+            <input
+              id="q"
+              class="search-input"
+              type="text"
+              maxlength="300"
+              autocomplete="off"
+              placeholder="Чёрная кожаная куртка, винтаж, до 15 000, размер M"
+              aria-label="Описание вещи"
+            />
+            <div class="search-actions">
+              <button type="button" class="btn btn-ghost" id="btn-photo" title="Добавить фото">Фото</button>
+              <button type="button" class="btn btn-primary" id="btn-submit">Искать</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="photo-preview" id="photo-preview" hidden>
+          <img id="photo-img" alt="Выбранное фото"/>
+          <div class="meta" id="photo-meta">Фото готово</div>
+          <button type="button" class="clear" id="photo-clear">Убрать</button>
+        </div>
+
+        <ul class="examples" aria-label="Примеры запросов">
+          <li><button type="button" data-query="Чёрная кожаная куртка, винтаж, до 15 000, размер M">Чёрная кожаная куртка · до 15 000 · M</button></li>
+          <li><button type="button" data-query="Как у Тайлера Дердена из Бойцовского клуба">Как у Тайлера Дердена</button></li>
+          <li><button type="button" data-query="Худи Nike до 15к">Худи Nike до 15к</button></li>
+          <li><button type="button" data-query="Оливковая рабочая куртка, размер L">Оливковая рабочая куртка · L</button></li>
+        </ul>
+
+        <p class="status" id="status" role="status" aria-live="polite" hidden></p>
+      </div>
+    </section>
+
+    <section class="results" id="results" aria-live="polite">
+      <div class="wrap">
+        <div id="results-body">
+          <p class="empty">Здесь появится разбор запроса и ссылки на поиск площадок.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>iSearch · ранняя версия</span>
+      <span><a href="/about.html">О проекте</a> · <a href="/contacts.html">Контакты</a></span>
+    </div>
+  </footer>
+
+  <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden/>
+  <script src="js/search.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+[
+  {
+    "id": "ozon",
+    "name": "Ozon",
+    "type": "marketplace",
+    "url_template": "https://www.ozon.ru/search/?text={q}",
+    "price_param": "currency_price",
+    "price_format": "0;{max}",
+    "verified": true,
+    "price_filter_verified": false,
+    "verification_note": "Формат ?text= подтверждён редиректом (антибот 403). Фильтр currency_price=min;max есть в публичных примерах URL Ozon, живую выдачу с ценой не открыли из‑за антибота — в ссылки цену не подставляем."
+  },
+  {
+    "id": "wildberries",
+    "name": "Wildberries",
+    "type": "marketplace",
+    "url_template": "https://www.wildberries.ru/catalog/0/search.aspx?search={q}",
+    "price_param": "priceU",
+    "price_format": "0;{max_kopecks}",
+    "verified": true,
+    "price_filter_verified": false,
+    "verification_note": "Канонический путь /catalog/0/search.aspx?search=; автоматическая проверка упирается в CAPTCHA. Цену в URL не подставляем, пока не проверим вручную."
+  },
+  {
+    "id": "yandex_market",
+    "name": "Яндекс Маркет",
+    "type": "marketplace",
+    "url_template": "https://market.yandex.ru/search?text={q}",
+    "price_param": "priceto",
+    "price_format": "{max}",
+    "verified": true,
+    "price_filter_verified": true,
+    "verification_note": "Открыто в браузере 2026-10-18: поиск и priceto=15000 применяются (поле «До» = 15000)."
+  },
+  {
+    "id": "avito",
+    "name": "Авито",
+    "type": "marketplace",
+    "url_template": "https://www.avito.ru/all?q={q}",
+    "price_param": "pmax",
+    "price_format": "{max}",
+    "verified": true,
+    "price_filter_verified": false,
+    "verification_note": "URL ?q= отвечает 429 (лимит), значит путь живой. Старый /rossiya?q= тоже встречается. pmax не подтверждён живой страницей — цену не подставляем."
+  },
+  {
+    "id": "lamoda",
+    "name": "Lamoda",
+    "type": "official_store",
+    "url_template": "https://www.lamoda.ru/catalogsearch/result/?q={q}",
+    "price_param": null,
+    "price_format": null,
+    "verified": true,
+    "price_filter_verified": false,
+    "verification_note": "HTTP 200 на catalogsearch/result/?q= (2026-10-18). Фильтр цены в URL не проверяли."
+  },
+  {
+    "id": "zara",
+    "name": "Zara",
+    "type": "official_store",
+    "url_template": "https://www.zara.com/ru/ru/search?searchTerm={q}",
+    "price_param": null,
+    "price_format": null,
+    "verified": true,
+    "price_filter_verified": false,
+    "verification_note": "HTTP 200 на /ru/ru/search?searchTerm= (2026-10-18)."
+  },
+  {
+    "id": "ebay",
+    "name": "eBay",
+    "type": "vintage",
+    "url_template": "https://www.ebay.com/sch/i.html?_nkw={q}",
+    "price_param": null,
+    "price_format": null,
+    "verified": true,
+    "price_filter_verified": false,
+    "verification_note": "HTTP 200 на /sch/i.html?_nkw= (2026-10-18). Для винтажа/архива; фильтр цены в URL не подключали."
+  },
+  {
+    "id": "vestiaire",
+    "name": "Vestiaire Collective",
+    "type": "vintage",
+    "url_template": "https://www.vestiairecollective.com/search/?q={q}",
+    "price_param": null,
+    "price_format": null,
+    "verified": false,
+    "price_filter_verified": false,
+    "verification_note": "Автопроверка вернула 403. Не показываем пользователю, пока не проверите вручную в браузере."
+  }
+]
