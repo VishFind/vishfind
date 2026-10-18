@@ -4,27 +4,43 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>iSearch — поиск редкой одежды</title>
-  <meta name="description" content="Опишите вещь обычным языком — iSearch разберёт запрос и откроет поиск на площадках. Цены и наличие смотрите на месте."/>
+  <meta name="description" content="Опишите вещь обычным языком — iSearch разберёт запрос и откроет поиск на площадках. Цены смотрите на месте."/>
   <meta name="robots" content="index, follow"/>
   <link rel="icon" href="images/favicon.svg" type="image/svg+xml"/>
   <meta property="og:type" content="website"/>
   <meta property="og:title" content="iSearch — поиск редкой одежды"/>
-  <meta property="og:description" content="Найдём куртку, которую не гуглится. Переходы на поиск площадок — без выдуманных цен."/>
+  <meta property="og:description" content="Найдём вещь, которую не гуглится. Переходы на поиск площадок — без выдуманных цен."/>
   <meta property="og:locale" content="ru_RU"/>
+  <script>
+    (function () {
+      try {
+        var k = 'isearch-theme';
+        var s = localStorage.getItem(k);
+        var t = s || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="css/fonts.css"/>
   <link rel="stylesheet" href="css/site.css"/>
 </head>
 <body>
+  <div class="bg" aria-hidden="true"></div>
   <a class="skip-link" href="#search">К поиску</a>
 
   <header class="site-header">
-    <div class="wrap">
+    <div class="wrap glass">
       <a class="brand" href="/">iSearch</a>
-      <nav class="nav" aria-label="Основное">
-        <a href="/" aria-current="page">Поиск</a>
-        <a href="/about.html">О проекте</a>
-        <a href="/contacts.html">Контакты</a>
-      </nav>
+      <div class="header-right">
+        <nav class="nav" aria-label="Основное">
+          <a href="/" aria-current="page">Поиск</a>
+          <a href="/about.html">О проекте</a>
+          <a href="/contacts.html">Контакты</a>
+        </nav>
+        <button type="button" class="theme-toggle" id="theme-toggle" aria-pressed="true">Тема</button>
+      </div>
     </div>
   </header>
 
@@ -32,12 +48,12 @@
     <section class="hero">
       <div class="wrap">
         <p class="hero-kicker">Каталог · архив · площадки</p>
-        <h1>Найдём куртку, которую не гуглится</h1>
-        <p class="hero-lead">Опишите вещь своими словами или приложите фото. Мы соберём поисковую фразу и отправим вас на площадки.</p>
+        <h1>Найдём вещь, которую не гуглится</h1>
+        <p class="hero-lead">Опишите запрос своими словами или приложите фото. Мы соберём фразу и отправим вас на поиск площадок.</p>
 
-        <div class="search-box" id="search">
+        <div class="search-box glass" id="search">
           <div class="search-row">
-            <label class="visually-hidden" for="q" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Запрос</label>
+            <label for="q" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Запрос</label>
             <input
               id="q"
               class="search-input"
@@ -48,13 +64,13 @@
               aria-label="Описание вещи"
             />
             <div class="search-actions">
-              <button type="button" class="btn btn-ghost" id="btn-photo" title="Добавить фото">Фото</button>
+              <button type="button" class="btn btn-ghost" id="btn-photo" title="Добавить фото" hidden>Фото</button>
               <button type="button" class="btn btn-primary" id="btn-submit">Искать</button>
             </div>
           </div>
         </div>
 
-        <div class="photo-preview" id="photo-preview" hidden>
+        <div class="photo-preview glass" id="photo-preview" hidden>
           <img id="photo-img" alt="Выбранное фото"/>
           <div class="meta" id="photo-meta">Фото готово</div>
           <button type="button" class="clear" id="photo-clear">Убрать</button>
@@ -74,7 +90,7 @@
     <section class="results" id="results" aria-live="polite">
       <div class="wrap">
         <div id="results-body">
-          <p class="empty">Здесь появится разбор запроса и ссылки на поиск площадок.</p>
+          <p class="empty">Здесь появятся разбор запроса и ссылки на поиск.</p>
         </div>
       </div>
     </section>
@@ -88,6 +104,7 @@
   </footer>
 
   <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden/>
+  <script src="js/theme.js" defer></script>
   <script src="js/search.js" defer></script>
 </body>
 </html>

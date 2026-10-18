@@ -4,39 +4,51 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>О проекте — iSearch</title>
-  <meta name="description" content="iSearch помогает искать редкую и винтажную одежду: разбирает запрос и ведёт на поиск площадок."/>
+  <meta name="description" content="iSearch помогает искать редкую одежду: разбирает запрос и ведёт на поиск площадок."/>
   <link rel="icon" href="images/favicon.svg" type="image/svg+xml"/>
-  <meta property="og:title" content="О проекте — iSearch"/>
-  <meta property="og:description" content="Ранняя версия поиска редкой одежды без выдуманных цен."/>
+  <script>
+    (function () {
+      try {
+        var s = localStorage.getItem('isearch-theme');
+        var t = s || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="css/fonts.css"/>
   <link rel="stylesheet" href="css/site.css"/>
 </head>
 <body>
+  <div class="bg" aria-hidden="true"></div>
   <header class="site-header">
-    <div class="wrap">
+    <div class="wrap glass">
       <a class="brand" href="/">iSearch</a>
-      <nav class="nav" aria-label="Основное">
-        <a href="/">Поиск</a>
-        <a href="/about.html" aria-current="page">О проекте</a>
-        <a href="/contacts.html">Контакты</a>
-      </nav>
+      <div class="header-right">
+        <nav class="nav" aria-label="Основное">
+          <a href="/">Поиск</a>
+          <a href="/about.html" aria-current="page">О проекте</a>
+          <a href="/contacts.html">Контакты</a>
+        </nav>
+        <button type="button" class="theme-toggle" id="theme-toggle">Тема</button>
+      </div>
     </div>
   </header>
-
   <main class="page">
     <div class="wrap">
       <h1>О проекте</h1>
-      <p>iSearch — для тех, кто ищет винтаж, архив и вещи «как из фильма». Вы описываете запрос обычным языком, сайт вытаскивает цвет, размер, бюджет и ведёт на поиск Ozon, Wildberries, Маркета, Авито и ещё нескольких магазинов.</p>
-      <p>Это ранняя версия. Мы не проверяем цены, наличие и размеры на площадках — только собираем удобные ссылки на их поиск. Если приложите фото, разбор идёт через локальную модель Ollama у вас на компьютере (нужна установка).</p>
-      <p class="muted">Никакого «умного помощника с гарантией совпадения» — только разбор запроса и переходы.</p>
+      <p>iSearch — для поиска винтажа, архива и вещей «как из фильма». Вы пишете запрос обычным языком (или прикладываете фото), сайт собирает фразу и открывает поиск на площадках.</p>
+      <p>Это ранняя версия. Цены и наличие мы не проверяем — только удобные переходы. Разбор фото идёт локально через Ollama на вашем компьютере.</p>
+      <p class="muted">Без обещаний «идеального совпадения».</p>
     </div>
   </main>
-
   <footer class="site-footer">
     <div class="wrap">
       <span>iSearch · ранняя версия</span>
       <span><a href="/">Поиск</a> · <a href="/contacts.html">Контакты</a></span>
     </div>
   </footer>
+  <script src="js/theme.js" defer></script>
 </body>
 </html>

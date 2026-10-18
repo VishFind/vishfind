@@ -6,37 +6,49 @@
   <title>Контакты — iSearch</title>
   <meta name="description" content="Контакты проекта iSearch."/>
   <link rel="icon" href="images/favicon.svg" type="image/svg+xml"/>
-  <meta property="og:title" content="Контакты — iSearch"/>
-  <meta property="og:description" content="Связаться с командой iSearch."/>
+  <script>
+    (function () {
+      try {
+        var s = localStorage.getItem('isearch-theme');
+        var t = s || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="css/fonts.css"/>
   <link rel="stylesheet" href="css/site.css"/>
 </head>
 <body>
+  <div class="bg" aria-hidden="true"></div>
   <header class="site-header">
-    <div class="wrap">
+    <div class="wrap glass">
       <a class="brand" href="/">iSearch</a>
-      <nav class="nav" aria-label="Основное">
-        <a href="/">Поиск</a>
-        <a href="/about.html">О проекте</a>
-        <a href="/contacts.html" aria-current="page">Контакты</a>
-      </nav>
+      <div class="header-right">
+        <nav class="nav" aria-label="Основное">
+          <a href="/">Поиск</a>
+          <a href="/about.html">О проекте</a>
+          <a href="/contacts.html" aria-current="page">Контакты</a>
+        </nav>
+        <button type="button" class="theme-toggle" id="theme-toggle">Тема</button>
+      </div>
     </div>
   </header>
-
   <main class="page">
     <div class="wrap">
       <h1>Контакты</h1>
-      <p>Пока это заглушка. Сюда позже встанет рабочая почта.</p>
+      <p>Пока заглушка. Сюда позже встанет рабочая почта.</p>
       <p>Почта: <a href="mailto:YOUR_EMAIL@example.com">YOUR_EMAIL@example.com</a></p>
-      <p class="muted">Замените YOUR_EMAIL@example.com на свой адрес в файле contacts.html.</p>
+      <p class="muted">Замените адрес в файле contacts.html.</p>
     </div>
   </main>
-
   <footer class="site-footer">
     <div class="wrap">
       <span>iSearch · ранняя версия</span>
       <span><a href="/">Поиск</a> · <a href="/about.html">О проекте</a></span>
     </div>
   </footer>
+  <script src="js/theme.js" defer></script>
 </body>
 </html>

@@ -18,11 +18,23 @@
   const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
   const MAX_FILE = 8 * 1024 * 1024;
   const MAX_DATA = 6 * 1024 * 1024;
-  const MAX_SIDE = 1280;
+  const MAX_SIDE = 1024; // ТЗ: длинная сторона ≤ 1024 px
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   let imageDataUrl = null;
   let busy = false;
-  let lastParsed = null;
+  let aiEnabled = false;
+  let lastData = null;
+
+  const SOURCE_TEMPLATES = {
+    ozon: 'https://www.ozon.ru/search/?text={q}',
+    wildberries: 'https://www.wildberries.ru/catalog/0/search.aspx?search={q}',
+    yandex_market: 'https://market.yandex.ru/search?text={q}',
+    avito: 'https://www.avito.ru/all?q={q}',
+    lamoda: 'https://www.lamoda.ru/catalogsearch/result/?q={q}',
+    zara: 'https://www.zara.com/ru/ru/search?searchTerm={q}',
+    ebay: 'https://www.ebay.com/sch/i.html?_nkw={q}',
+  };
 
   function el(tag, cls, text) {
     const n = document.createElement(tag);
@@ -70,24 +82,55 @@
     return /^https?:\/\//i.test(u || '') ? u : null;
   }
 
+  function showSkeleton() {
+    const box = el('div', 'skel');
+    box.setAttribute('aria-hidden', 'true');
+    [null, null, 'lg', null, 'lg', null].forEach((mod) => {
+      box.appendChild(el('div', 'skel-line' + (mod ? ' ' + mod : '')));
+    });
+    resultsBody.replaceChildren(box);
+  }
+
+  function staggerIn(nodes) {
+    nodes.forEach((node, i) => {
+      if (reduceMotion) {
+        node.classList.add('is-in');
+        return;
+      }
+      window.setTimeout(() => node.classList.add('is-in'), 50 + i * 50);
+    });
+  }
+
+  function buildSearchUrl(template, phrase, budget, sourceId) {
+    let url = template.replace('{q}', encodeURIComponent(phrase));
+    if (budget != null && sourceId === 'yandex_market') {
+      url += (url.includes('?') ? '&' : '?') + 'priceto=' + encodeURIComponent(String(budget));
+    }
+    return url;
+  }
+
+  function phraseFromAttrs(p) {
+    const parts = [p.brand, p.color, p.category, p.rest].filter(Boolean);
+    if (p.size) parts.push('размер ' + p.size);
+    return parts.join(' ').replace(/\s+/g, ' ').trim() || p.search_phrase;
+  }
+
   async function resizeImage(file) {
     if (!ALLOWED.includes(file.type) && !/\.(jpe?g|png|webp|gif)$/i.test(file.name || '')) {
       throw new Error('Нужен JPG, PNG, WebP или GIF.');
     }
-    if (file.size > MAX_FILE) throw new Error('Файл больше 8 МБ — выберите другое фото.');
-    const dataUrl = await new Promise((resolve, reject) => {
+    if (file.size > MAX_FILE) throw new Error('Файл больше 8 МБ.');
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onerror = () => reject(new Error('Не удалось прочитать файл.'));
       reader.onload = () => {
         const img = new Image();
         img.onload = () => {
           const scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
-          const w = Math.max(1, Math.round(img.width * scale));
-          const h = Math.max(1, Math.round(img.height * scale));
           const c = document.createElement('canvas');
-          c.width = w;
-          c.height = h;
-          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          c.width = Math.max(1, Math.round(img.width * scale));
+          c.height = Math.max(1, Math.round(img.height * scale));
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
           const out = c.toDataURL('image/jpeg', 0.82);
           const approx = Math.floor((out.length * 3) / 4);
           if (approx > MAX_DATA) reject(new Error('После сжатия фото всё ещё слишком большое.'));
@@ -98,106 +141,43 @@
       };
       reader.readAsDataURL(file);
     });
-    return dataUrl;
   }
 
   function clearPhoto() {
     imageDataUrl = null;
-    fileInput.value = '';
-    preview.hidden = true;
-    previewImg.removeAttribute('src');
-    photoBtn.classList.remove('is-active');
+    if (fileInput) fileInput.value = '';
+    if (preview) preview.hidden = true;
+    if (previewImg) previewImg.removeAttribute('src');
+    if (photoBtn) photoBtn.classList.remove('is-active');
   }
-
-  photoClear.addEventListener('click', () => {
-    clearPhoto();
-    setStatus('Фото убрано.', 'ok');
-  });
-
-  photoBtn.addEventListener('click', () => {
-    if (busy) return;
-    fileInput.click();
-  });
-
-  fileInput.addEventListener('change', async () => {
-    const file = fileInput.files && fileInput.files[0];
-    if (!file) return;
-    try {
-      setStatus('Готовим фото…');
-      imageDataUrl = await resizeImage(file);
-      previewImg.src = imageDataUrl;
-      preview.hidden = false;
-      photoMeta.textContent = 'Фото приложено. Можно добавить текст и нажать «Искать».';
-      photoBtn.classList.add('is-active');
-      setStatus('Фото готово.', 'ok');
-    } catch (e) {
-      clearPhoto();
-      setStatus(e.message || 'Ошибка фото', 'error');
-    }
-  });
-
-  document.querySelectorAll('.examples [data-query]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (busy) return;
-      input.value = btn.getAttribute('data-query') || '';
-      input.focus();
-    });
-  });
-
-  function buildSearchUrl(template, phrase, budget, sourceId, priceVerified) {
-    const enc = encodeURIComponent(phrase);
-    let url = template.replace('{q}', enc);
-    if (budget != null && priceVerified && sourceId === 'yandex_market') {
-      url += (url.includes('?') ? '&' : '?') + 'priceto=' + encodeURIComponent(String(budget));
-    }
-    return url;
-  }
-
-  // шаблоны совпадают с data/sources.json (проверенные)
-  const SOURCE_TEMPLATES = {
-    ozon: 'https://www.ozon.ru/search/?text={q}',
-    wildberries: 'https://www.wildberries.ru/catalog/0/search.aspx?search={q}',
-    yandex_market: 'https://market.yandex.ru/search?text={q}',
-    avito: 'https://www.avito.ru/all?q={q}',
-    lamoda: 'https://www.lamoda.ru/catalogsearch/result/?q={q}',
-    zara: 'https://www.zara.com/ru/ru/search?searchTerm={q}',
-    ebay: 'https://www.ebay.com/sch/i.html?_nkw={q}',
-  };
 
   function renderResults(data) {
+    lastData = data;
     resultsBody.replaceChildren();
     const p = data.parsed || {};
-    lastParsed = { ...p, _sourcesMeta: data.sources };
 
-    const note = el('p', 'honest-note');
+    const note = el('p', 'honest-note glass');
     note.textContent =
-      data.note ||
-      'Мы ведём на поиск площадок. Цены и наличие смотрите на месте — мы их не проверяли и не выдумываем.';
+      'Это переходы на поиск площадок. Цены и наличие смотрите на месте.';
     resultsBody.appendChild(note);
 
-    const block = el('div', 'understood');
-    block.appendChild(el('h2', null, 'Как поняли запрос'));
-    const line = el('p', 'understood-line', summaryLine(p));
-    line.id = 'understood-line';
-    block.appendChild(line);
-    if (p.search_phrase) {
-      block.appendChild(el('p', 'understood-phrase', 'Фраза для площадок: «' + p.search_phrase + '»'));
-    }
+    const block = el('div', 'understood glass');
+    block.appendChild(el('h2', null, 'Как мы поняли запрос'));
+    block.appendChild(el('p', 'understood-line', summaryLine(p)));
     if (data.photo_used) {
-      block.appendChild(el('p', 'understood-phrase', 'Учтено фото (локальный разбор).'));
+      block.appendChild(el('p', 'understood-phrase', 'Распознано по фото (можно поправить ниже).'));
     }
-    if (p.movie && p.movie.description) {
-      block.appendChild(el('p', 'understood-phrase', 'Образ: ' + p.movie.description));
+    if (p.search_phrase) {
+      block.appendChild(el('p', 'understood-phrase', 'Фраза: «' + p.search_phrase + '»'));
     }
 
     const edit = el('div', 'understood-edit');
-    const fields = [
+    [
       ['category', 'Категория', p.category || ''],
       ['color', 'Цвет', p.color || ''],
       ['size', 'Размер', p.size || ''],
       ['budget', 'Бюджет ₽', p.budget != null ? String(p.budget) : ''],
-    ];
-    fields.forEach(([key, label, val]) => {
+    ].forEach(([key, label, val]) => {
       const lab = el('label', null, label);
       const inp = document.createElement('input');
       inp.type = key === 'budget' ? 'number' : 'text';
@@ -207,50 +187,24 @@
       lab.appendChild(inp);
       edit.appendChild(lab);
     });
-    const applyBtn = el('button', 'btn', 'Обновить ссылки');
-    applyBtn.type = 'button';
-    applyBtn.addEventListener('click', () => {
-      const next = { ...p };
+
+    const again = el('button', 'btn', 'Искать снова');
+    again.type = 'button';
+    again.addEventListener('click', () => {
+      const attrs = { brand: p.brand || null };
       edit.querySelectorAll('input[data-key]').forEach((inp) => {
         const k = inp.dataset.key;
-        let v = inp.value.trim();
+        const v = inp.value.trim();
         if (k === 'budget') {
-          next.budget = v ? Number(v) : null;
-          if (next.budget != null && !Number.isFinite(next.budget)) next.budget = null;
+          const n = Number(v);
+          attrs.budget = v && Number.isFinite(n) ? n : null;
         } else {
-          next[k] = v || null;
+          attrs[k] = v || null;
         }
       });
-      const parts = [next.brand, next.color, next.category, next.rest].filter(Boolean);
-      if (next.size) parts.push('размер ' + next.size);
-      next.search_phrase = parts.join(' ').replace(/\s+/g, ' ').trim() || p.search_phrase;
-      const sources = (data.sources || []).map((s) => {
-        const tpl = SOURCE_TEMPLATES[s.id];
-        if (!tpl || !next.search_phrase) return s;
-        const url = buildSearchUrl(
-          tpl,
-          next.search_phrase,
-          next.budget,
-          s.id,
-          s.id === 'yandex_market'
-        );
-        return {
-          ...s,
-          url,
-          price_filter_applied: s.id === 'yandex_market' && next.budget != null,
-          price_filter_note:
-            next.budget != null && s.id !== 'yandex_market'
-              ? s.price_filter_note ||
-                'Фильтр цены в ссылку не подставлен — ограничьте цену на сайте.'
-              : s.id === 'yandex_market'
-                ? null
-                : s.price_filter_note,
-        };
-      });
-      renderResults({ ...data, parsed: next, sources });
-      setStatus('Ссылки обновлены по вашим правкам.', 'ok');
+      runSearch(null, { query: '', attributes: attrs, attributes_priority: true });
     });
-    edit.appendChild(applyBtn);
+    edit.appendChild(again);
     block.appendChild(edit);
     resultsBody.appendChild(block);
 
@@ -261,6 +215,7 @@
     }
 
     const list = el('ul', 'source-list');
+    const rows = [];
     sources.forEach((s) => {
       const li = el('li', 'source-row');
       const left = document.createElement('div');
@@ -280,22 +235,23 @@
       } else if (s.price_filter_note) {
         li.appendChild(el('p', 'source-note', s.price_filter_note));
       }
-      // Цены товаров намеренно не показываем — мы их не проверяли
-      li.appendChild(
-        el('p', 'source-note', 'Цена: смотрите на площадке (у нас нет проверенных цен).')
-      );
       list.appendChild(li);
+      rows.push(li);
     });
     resultsBody.appendChild(list);
+    staggerIn(rows);
   }
 
-  async function runSearch(ev) {
+  async function runSearch(ev, override) {
     if (ev) ev.preventDefault();
     if (busy) return;
 
-    const query = input.value.trim();
-    if (!query && !imageDataUrl) {
-      setStatus('Введите описание или приложите фото.', 'error');
+    const query = override && override.query != null ? String(override.query).trim() : input.value.trim();
+    const attributes = override && override.attributes ? override.attributes : undefined;
+    const attributesPriority = !!(override && override.attributes_priority);
+
+    if (!query && !imageDataUrl && !attributes) {
+      setStatus('Введите описание вещи.', 'error');
       return;
     }
     if (query.length > 300) {
@@ -304,38 +260,103 @@
     }
 
     setBusy(true);
-    setStatus(imageDataUrl ? 'Разбираем фото и запрос… Это может занять время.' : 'Разбираем запрос…');
-    resultsBody.replaceChildren(el('p', 'empty', 'Ищем…'));
-    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setStatus('Разбираем запрос…');
+    showSkeleton();
+    resultsSection.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
 
     try {
-      const payload = { query, image: imageDataUrl || '' };
+      const payload = { query };
+      if (attributes) payload.attributes = attributes;
+      if (attributesPriority) payload.attributes_priority = true;
+      if (imageDataUrl && aiEnabled) payload.image = imageDataUrl;
+
       const r = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(imageDataUrl ? 7 * 60 * 1000 : 30_000),
+        signal: AbortSignal.timeout(payload.image ? 100_000 : 30_000),
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || 'Поиск не удался.');
+      if (!r.ok) {
+        throw new Error(data.error || 'Поиск не удался.');
+      }
       renderResults(data);
-      setStatus('Готово. Откройте площадку и смотрите цены там.', 'ok');
+      setStatus(
+        data.photo_used ? 'Фото разобрано. Цены смотрите на площадке.' : 'Готово. Цены смотрите на площадке.',
+        'ok'
+      );
     } catch (err) {
       const msg =
         err.name === 'TimeoutError'
-          ? 'Сервер не ответил вовремя. Для фото проверьте, что Ollama запущена.'
+          ? 'Сервер не ответил вовремя. Для фото проверьте Ollama.'
           : err.message === 'Failed to fetch'
-            ? 'Сервер недоступен. В папке проекта: npm start'
+            ? 'Сервер недоступен. Запустите: npm.cmd start'
             : err.message || 'Ошибка';
       setStatus(msg, 'error');
       resultsBody.replaceChildren(el('p', 'empty', msg));
+      // текстовое поле остаётся — можно описать вещь словами
     } finally {
       setBusy(false);
     }
   }
 
+  async function loadHealth() {
+    try {
+      const d = await (await fetch('/api/health', { cache: 'no-store' })).json();
+      aiEnabled = !!d.ai_enabled;
+      if (photoBtn) {
+        photoBtn.hidden = !aiEnabled;
+        photoBtn.setAttribute('aria-hidden', aiEnabled ? 'false' : 'true');
+      }
+    } catch (_) {
+      aiEnabled = false;
+      if (photoBtn) photoBtn.hidden = true;
+    }
+  }
+
+  if (photoClear) {
+    photoClear.addEventListener('click', () => {
+      clearPhoto();
+      setStatus('Фото убрано.', 'ok');
+    });
+  }
+  if (photoBtn) {
+    photoBtn.addEventListener('click', () => {
+      if (busy || !aiEnabled) return;
+      fileInput.click();
+    });
+  }
+  if (fileInput) {
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      try {
+        setStatus('Готовим фото…');
+        imageDataUrl = await resizeImage(file);
+        previewImg.src = imageDataUrl;
+        preview.hidden = false;
+        photoMeta.textContent = 'Фото приложено — нажмите «Найти», чтобы разобрать.';
+        photoBtn.classList.add('is-active');
+        setStatus('Фото готово. Нажмите «Найти».', 'ok');
+      } catch (e) {
+        clearPhoto();
+        setStatus(e.message || 'Ошибка фото', 'error');
+      }
+    });
+  }
+
+  document.querySelectorAll('.examples [data-query]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (busy) return;
+      input.value = btn.getAttribute('data-query') || '';
+      input.focus();
+    });
+  });
+
   submitBtn.addEventListener('click', runSearch);
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') runSearch(e);
   });
+
+  loadHealth();
 })();

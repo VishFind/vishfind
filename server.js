@@ -10,7 +10,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { parseQuery } = require('./lib/parse-query');
+const { parseQuery, buildSearchPhrase } = require('./lib/parse-query');
 const { createRateLimiter } = require('./lib/rate-limit');
 const providers = require('./providers');
 
@@ -30,8 +30,28 @@ for (const name of ['.env', 'env.txt']) {
 const PORT = Number(process.env.PORT || 3000);
 const AI_ENABLED = String(process.env.AI_ENABLED || 'false').toLowerCase() === 'true';
 const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434').replace(/\/$/, '');
-const MODEL = process.env.OLLAMA_MODEL || 'qwen3-vl:2b';
-const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_SEC || 300) * 1000;
+// qwen3-vl:2b (без -instruct) часто кладёт ответ в thinking и оставляет content пустым.
+const MODEL = process.env.OLLAMA_MODEL || 'qwen3-vl:2b-instruct';
+const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_SEC || 90) * 1000;
+/** Таймаут разбора фото — 90 с (AbortController). */
+const PHOTO_TIMEOUT_MS = Math.min(
+  Number(process.env.PHOTO_TIMEOUT_SEC || 90) * 1000,
+  90_000
+);
+
+/** JSON Schema для structured outputs Ollama (docs.ollama.com/capabilities/structured-outputs) */
+const PHOTO_FORMAT = {
+  type: 'object',
+  properties: {
+    category: { type: ['string', 'null'] },
+    color: { type: ['string', 'null'] },
+    material: { type: ['string', 'null'] },
+    style: { type: ['string', 'null'] },
+    brand_guess: { type: ['string', 'null'] },
+    description: { type: ['string', 'null'] },
+  },
+  required: ['category', 'color', 'material', 'style', 'brand_guess', 'description'],
+};
 const TAVILY_KEY = process.env.TAVILY_API_KEY || '';
 const OLLAMA_KEY = process.env.OLLAMA_API_KEY || '';
 
@@ -113,30 +133,54 @@ function emptyParsed(raw) {
   };
 }
 
+function cleanAttr(v) {
+  if (v == null) return null;
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  let s = String(v).trim();
+  if (!s) return null;
+  // модель часто пишет «не указано» вместо null; \b с кириллицей ненадёжен
+  s = s
+    .replace(/(^|[\s,;:.]+)(не\s*указан[оаые]?|неизвестн\w*|unknown|n\/a|none|null)(?=$|[\s,;:.]+)/gi, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[\s,;:.]+|[\s,;:.]+$/g, '')
+    .trim();
+  if (!s || /^(null|none|unknown|n\/a|неизвестно|нет)$/i.test(s)) return null;
+  return s;
+}
+
+/** attributes из фото/ручной правки: заполняют только пустые поля текста (текст важнее). */
+function applyAttributes(parsed, attrs) {
+  if (!attrs || typeof attrs !== 'object') return parsed;
+  const out = { ...parsed };
+  if (out.category == null) out.category = cleanAttr(attrs.category);
+  if (out.color == null) out.color = cleanAttr(attrs.color);
+  if (out.brand == null) out.brand = cleanAttr(attrs.brand || attrs.visible_brand || attrs.brand_guess);
+  if (out.size == null) out.size = cleanAttr(attrs.size);
+  if (out.budget == null) {
+    const b = attrs.budget != null ? attrs.budget : attrs.max_price_rub;
+    const n = Number(b);
+    out.budget = Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+  }
+  if (out.rest == null && attrs.description) out.rest = cleanAttr(attrs.description);
+  const movie = out.movie;
+  out.search_phrase = buildSearchPhrase(out, movie) || out.search_phrase;
+  return out;
+}
+
 function mergeVisionIntoParsed(parsed, analysis) {
   // Явный текст пользователя важнее догадок модели
-  const out = { ...parsed };
-  if (out.category == null && analysis.category) out.category = analysis.category;
-  if (out.color == null && analysis.color) out.color = analysis.color;
-  if (out.brand == null && analysis.visible_brand) out.brand = analysis.visible_brand;
-  if (out.size == null && analysis.size) out.size = analysis.size;
-  if (out.budget == null && analysis.max_price_rub) out.budget = analysis.max_price_rub;
-
-  const bits = [];
-  if (out.brand) bits.push(out.brand);
-  if (out.color) bits.push(out.color);
-  if (out.category) bits.push(out.category);
-  if (analysis.material) bits.push(analysis.material);
-  if (analysis.style) bits.push(analysis.style);
-  if (out.rest) bits.push(out.rest);
-  if (analysis.search_phrase) {
-    for (const w of String(analysis.search_phrase).split(/\s+/)) {
-      if (w && !bits.some((b) => String(b).toLowerCase() === w.toLowerCase())) bits.push(w);
-    }
-  }
-  if (out.size) bits.push(`размер ${out.size}`);
-  out.search_phrase = bits.join(' ').replace(/\s+/g, ' ').trim() || analysis.search_phrase || out.search_phrase;
-  return out;
+  const descBits = [analysis.material, analysis.style, analysis.description]
+    .map(cleanAttr)
+    .filter(Boolean);
+  // без дубля search_phrase — иначе «не указано» и шум размножаются
+  return applyAttributes(parsed, {
+    category: analysis.category,
+    color: analysis.color,
+    brand: analysis.visible_brand || analysis.brand_guess,
+    size: analysis.size,
+    budget: analysis.max_price_rub,
+    description: descBits.join(' ') || cleanAttr(analysis.search_phrase),
+  });
 }
 
 // =====================================================================
@@ -160,22 +204,44 @@ async function handleSearch(req, res) {
     typeof body.image === 'string' && body.image
       ? body.image.replace(/^data:image\/[\w+.-]+;base64,/, '')
       : '';
+  const attrs = body.attributes && typeof body.attributes === 'object' ? body.attributes : null;
+  const attrsOnly = !!(attrs && body.attributes_priority === true);
 
-  if (!query && !image) {
+  if (!query && !image && !attrs) {
     return send(res, 400, { error: 'Введите текстовый запрос или приложите фото' });
   }
   if (query.length > 300) {
     return send(res, 400, { error: 'Запрос слишком длинный (максимум 300 символов)' });
   }
 
-  let parsed = query ? parseQuery(query, { movies: MOVIES, brands: BRANDS }) : emptyParsed('');
+  let parsed = query && !attrsOnly ? parseQuery(query, { movies: MOVIES, brands: BRANDS }) : emptyParsed(query);
+  // attributes: по умолчанию заполняют только пустые поля (текст важнее).
+  // attributes_priority=true — ручная правка / «Искать снова» (поля из attributes главнее).
+  if (attrsOnly) {
+    parsed = {
+      ...emptyParsed(query),
+      category: cleanAttr(attrs.category),
+      color: cleanAttr(attrs.color),
+      brand: cleanAttr(attrs.brand || attrs.visible_brand),
+      size: cleanAttr(attrs.size),
+      budget: (() => {
+        const n = Number(attrs.budget != null ? attrs.budget : attrs.max_price_rub);
+        return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+      })(),
+      rest: cleanAttr(attrs.rest || attrs.description),
+      movie: null,
+    };
+    parsed.search_phrase = buildSearchPhrase(parsed, null);
+  } else {
+    parsed = applyAttributes(parsed, attrs);
+  }
   let photo_used = false;
 
   if (image) {
     if (!AI_ENABLED) {
       return send(res, 503, {
         error:
-          'Разбор фото выключен (AI_ENABLED=false). Включите AI_ENABLED=true в .env, установите Ollama и модель с зрением (например qwen3-vl:2b), затем перезапустите сервер. Текстовый поиск без фото работает и так.',
+          'Разбор фото выключен (AI_ENABLED=false). Включите AI_ENABLED=true в .env, установите Ollama и модель qwen3-vl:2b-instruct, затем перезапустите сервер. Текстовый поиск без фото работает и так.',
         ai_enabled: false,
       });
     }
@@ -196,9 +262,16 @@ async function handleSearch(req, res) {
           'Ollama не запущена. Установите Ollama, выполните ollama pull qwen3-vl:2b, запустите Ollama и повторите.';
       }
       // Честно: не подменяем неудачный анализ «успехом»
+      const friendly =
+        /JSON|формат|разобрать|распознал|Failed to load image|400/i.test(msg) ||
+        e.name === 'TimeoutError';
       return send(res, 502, {
-        error: msg,
+        error: friendly
+          ? 'Не удалось разобрать фото. Опишите вещь словами.'
+          : msg,
+        detail: msg,
         photo_used: false,
+        keep_text_input: true,
         note: NOTE,
       });
     }
@@ -308,67 +381,136 @@ const SITES = [
   { id: 'avito', name: 'Авито', domain: 'avito.ru', url: (q) => `https://www.avito.ru/all?q=${enc(q)}` },
 ];
 
-function buildPrompt(query, movie, hasImage) {
+function buildPhotoPrompt(query, movie, strict) {
   const lines = [
-    'You help people find clothing to buy. Build a search profile from the request.',
-    hasImage ? 'A photo of the desired item is attached: look at it carefully.' : '',
-    query ? `Customer request (Russian): """${query}"""` : 'There is no text request, use only the photo.',
-    movie ? `The customer means the outfit from the movie "${movie.title}": ${movie.description}.` : '',
-    'Return ONLY one JSON object with these keys:',
-    'category, color, material, style, fit, size, max_price_rub (number or null), visible_brand, keywords (array of 3-6 short Russian words), search_phrase.',
-    'search_phrase is a short Russian query for an online store, 2-6 words, for example "кожаная куртка чёрная мужская".',
-    'Rules: write values in Russian. Never invent a brand, size or price: use null if it is not in the request or clearly visible in the photo.',
+    strict
+      ? 'Ответь ТОЛЬКО валидным JSON по схеме. Никакого текста вокруг, никаких markdown.'
+      : 'Опиши одежду на фото для поиска в магазине.',
+    'Поля (на русском): category, color, material, style, brand_guess (или null), description (одно короткое предложение).',
+    'Не выдумывай бренд, размер и цену: если не видно — null.',
+    query ? `Дополнительный текст покупателя: """${query}"""` : '',
+    movie ? `Возможный образ из фильма «${movie.title}»: ${movie.description}.` : '',
   ];
   return lines.filter(Boolean).join('\n');
 }
 
-async function ollamaChat(body) {
-  const r = await fetch(`${OLLAMA_URL}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
-  });
-  const text = await r.text();
-  if (!r.ok) throw Object.assign(new Error(`Ollama ${r.status}: ${text.slice(0, 200)}`), { status: r.status });
-  return JSON.parse(text);
+async function ollamaChat(body, timeoutMs) {
+  const ms = timeoutMs || OLLAMA_TIMEOUT_MS;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
+  try {
+    const r = await fetch(`${OLLAMA_URL}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: ac.signal,
+    });
+    const text = await r.text();
+    if (!r.ok) throw Object.assign(new Error(`Ollama ${r.status}: ${text.slice(0, 200)}`), { status: r.status });
+    return JSON.parse(text);
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      throw Object.assign(new Error(`Модель не ответила за ${Math.round(ms / 1000)} с`), {
+        name: 'TimeoutError',
+      });
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-async function analyze(query, imageB64, movie) {
-  const message = { role: 'user', content: buildPrompt(query, movie, !!imageB64) };
-  if (imageB64) message.images = [imageB64];
-  const base = {
-    model: MODEL,
-    messages: [message],
-    stream: false,
-    format: 'json',
-    keep_alive: '30m',
-    options: { temperature: 0.2, num_predict: 500 },
-  };
-  let data;
-  try {
-    data = await ollamaChat({ ...base, think: false });
-  } catch (e) {
-    if (e.status === 400) data = await ollamaChat(base);
-    else throw e;
-  }
-  const raw = data && data.message && data.message.content;
+function parsePhotoFields(raw) {
   const parsed = parseJsonLoose(raw);
-  if (!parsed) throw new Error('Модель вернула ответ не в формате JSON');
-  const kw = Array.isArray(parsed.keywords) ? parsed.keywords.map(str).filter(Boolean).slice(0, 6) : [];
-  const price = Number(parsed.max_price_rub);
+  if (!parsed || typeof parsed !== 'object') return null;
+  const brandClean = cleanAttr(parsed.brand_guess) || cleanAttr(parsed.visible_brand);
   return {
-    category: str(parsed.category),
-    color: str(parsed.color),
-    material: str(parsed.material),
-    style: str(parsed.style),
-    fit: str(parsed.fit),
-    size: str(parsed.size),
-    max_price_rub: Number.isFinite(price) && price > 0 ? price : null,
-    visible_brand: str(parsed.visible_brand),
-    keywords: kw,
-    search_phrase: str(parsed.search_phrase),
+    category: cleanAttr(parsed.category),
+    color: cleanAttr(parsed.color),
+    material: cleanAttr(parsed.material),
+    style: cleanAttr(parsed.style),
+    brand_guess: brandClean,
+    description: cleanAttr(parsed.description),
+    visible_brand: brandClean,
+    size: null,
+    max_price_rub: null,
+    search_phrase: null,
   };
+}
+
+/** content иногда пустой у thinking-моделей — берём thinking как запасной текст. */
+function extractModelText(message) {
+  if (!message || typeof message !== 'object') return '';
+  const content = String(message.content || '').trim();
+  if (content) return content;
+  const thinking = String(message.thinking || '')
+    .replace(/<\/?think>/gi, ' ')
+    .replace(/<think>[\s\S]*?<\/think>/gi, ' ')
+    .trim();
+  return thinking;
+}
+
+/**
+ * Разбор фото через Ollama vision.
+ * Нужен Ollama с поддержкой format=JSON Schema (обычно 0.5+, лучше свежий релиз).
+ * Изображение — чистый base64 без data:-префикса.
+ */
+async function analyze(query, imageB64, movie) {
+  if (!imageB64) throw new Error('Нет изображения для анализа');
+
+  const runOnce = async (strict) => {
+    const message = {
+      role: 'user',
+      content: buildPhotoPrompt(query, movie, strict),
+      images: [imageB64],
+    };
+    const base = {
+      model: MODEL,
+      messages: [message],
+      stream: false,
+      format: PHOTO_FORMAT,
+      keep_alive: '30m',
+      options: { temperature: 0, num_predict: 400 },
+    };
+    let data;
+    try {
+      data = await ollamaChat({ ...base, think: false }, PHOTO_TIMEOUT_MS);
+    } catch (e) {
+      if (e.status === 400) {
+        // модель/версия не приняла schema или think — упрощённый JSON-режим
+        data = await ollamaChat({ ...base, format: 'json' }, PHOTO_TIMEOUT_MS);
+      } else throw e;
+    }
+    const raw = extractModelText(data && data.message);
+    const fields = parsePhotoFields(raw);
+    if (!fields) {
+      const err = new Error('Модель вернула ответ не в формате JSON');
+      err.raw = raw;
+      throw err;
+    }
+    // хоть одно полезное поле
+    if (!fields.category && !fields.color && !fields.description && !fields.material) {
+      const err = new Error('Модель не распознала одежду на фото');
+      err.raw = raw;
+      throw err;
+    }
+    const phraseBits = [fields.color, fields.material, fields.category, fields.style, fields.brand_guess]
+      .filter(Boolean);
+    fields.search_phrase = phraseBits.join(' ') || fields.description;
+    return fields;
+  };
+
+  try {
+    return await runOnce(false);
+  } catch (first) {
+    console.warn('Фотоанализ: первая попытка не удалась:', first.message);
+    try {
+      return await runOnce(true);
+    } catch (second) {
+      console.warn('Фотоанализ: повтор не удался:', second.message);
+      throw second;
+    }
+  }
 }
 
 async function tavilySearch(site, phrase) {
