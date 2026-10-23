@@ -2,12 +2,13 @@
   "name": "isearch-demo",
   "version": "1.0.0",
   "private": true,
-  "description": "Локальный демо-сервер iSearch (Node.js без внешних пакетов)",
+  "description": "iSearch — поиск редкой/винтажной одежды: разбор запроса и ссылки на площадки (Node.js без npm-зависимостей)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "compare-photo": "node scripts/compare-photo-pipelines.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=18.0.0"
   }
 }

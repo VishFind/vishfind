@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>iSearch — поиск редкой одежды</title>
-  <meta name="description" content="Опишите вещь обычным языком — iSearch разберёт запрос и откроет поиск на площадках. Цены смотрите на месте."/>
+  <title>iSearch — поиск редкой и винтажной одежды</title>
+  <meta name="description" content="iSearch разбирает текстовый запрос или фото и открывает поиск на маркетплейсах. Цены и наличие смотрите на площадках."/>
   <meta name="robots" content="index, follow"/>
   <link rel="icon" href="images/favicon.svg" type="image/svg+xml"/>
   <meta property="og:type" content="website"/>
-  <meta property="og:title" content="iSearch — поиск редкой одежды"/>
-  <meta property="og:description" content="Найдём вещь, которую не гуглится. Переходы на поиск площадок — без выдуманных цен."/>
+  <meta property="og:title" content="iSearch — поиск редкой и винтажной одежды"/>
+  <meta property="og:description" content="Сервис разбора запроса и перехода к поиску на площадках. Без выдуманных цен и наличия."/>
   <meta property="og:locale" content="ru_RU"/>
   <script>
     (function () {
@@ -47,9 +47,9 @@
   <main>
     <section class="hero">
       <div class="wrap">
-        <p class="hero-kicker">Каталог · архив · площадки</p>
-        <h1>Найдём вещь, которую не гуглится</h1>
-        <p class="hero-lead">Опишите запрос своими словами или приложите фото. Мы соберём фразу и отправим вас на поиск площадок.</p>
+        <p class="hero-kicker">Сервис поиска одежды</p>
+        <h1>Поиск редкой и винтажной одежды</h1>
+        <p class="hero-lead" id="hero-lead">Опишите вещь текстом или приложите фото. Сервис выделит критерии (тип, цвет, размер, бюджет и др.) и откроет поиск на площадках. Цены и наличие не проверяются — их видно только на сайте магазина.</p>
 
         <div class="search-box glass" id="search">
           <div class="search-row">
@@ -77,10 +77,10 @@
         </div>
 
         <ul class="examples" aria-label="Примеры запросов">
-          <li><button type="button" data-query="Чёрная кожаная куртка, винтаж, до 15 000, размер M">Чёрная кожаная куртка · до 15 000 · M</button></li>
-          <li><button type="button" data-query="Как у Тайлера Дердена из Бойцовского клуба">Как у Тайлера Дердена</button></li>
-          <li><button type="button" data-query="Худи Nike до 15к">Худи Nike до 15к</button></li>
-          <li><button type="button" data-query="Оливковая рабочая куртка, размер L">Оливковая рабочая куртка · L</button></li>
+          <li><button type="button" data-query="Чёрная кожаная куртка, винтаж, до 15 000, размер M">Кожаная куртка · до 15 000 · M</button></li>
+          <li><button type="button" data-query="Оливковая рабочая куртка, размер L">Рабочая куртка · L</button></li>
+          <li><button type="button" data-query="Худи Nike до 15к">Худи Nike · до 15к</button></li>
+          <li><button type="button" data-query="Шерстяное пальто серое размер 48">Пальто шерсть · 48</button></li>
         </ul>
 
         <p class="status" id="status" role="status" aria-live="polite" hidden></p>
@@ -90,15 +90,35 @@
     <section class="results" id="results" aria-live="polite">
       <div class="wrap">
         <div id="results-body">
-          <p class="empty">Здесь появятся разбор запроса и ссылки на поиск.</p>
+          <p class="empty">После запроса здесь появятся критерии, разбор и ссылки на площадки.</p>
         </div>
+      </div>
+    </section>
+
+    <section class="how" id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <h2 id="how-title">Как устроен поиск</h2>
+        <ol class="how-list">
+          <li>
+            <strong>Разбор запроса</strong>
+            <span>Из текста (и при необходимости фото) выделяются категория, цвет, размер, бюджет, бренд и другие признаки.</span>
+          </li>
+          <li>
+            <strong>Проверка критериев</strong>
+            <span>Вы можете поправить поля и нажать «Искать снова» — ссылки пересоберутся.</span>
+          </li>
+          <li>
+            <strong>Переход на площадки</strong>
+            <span>Открывается поиск на маркетплейсах. Цену, наличие и доставку смотрите уже там.</span>
+          </li>
+        </ol>
       </div>
     </section>
   </main>
 
   <footer class="site-footer">
     <div class="wrap">
-      <span>iSearch · ранняя версия</span>
+      <span>iSearch</span>
       <span><a href="/about.html">О проекте</a> · <a href="/contacts.html">Контакты</a></span>
     </div>
   </footer>

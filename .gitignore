@@ -8,3 +8,13 @@ uploads/
 *.log
 .DS_Store
 Thumbs.db
+
+# Локальные/тестовые фото (в репозиторий не кладём)
+img/*
+!img/.gitkeep
+test/photos/
+test/results.json
+scripts/photo-pipeline-compare.json
+*.local.json
+isearch-project-backup.zip
+images (1).jpg
