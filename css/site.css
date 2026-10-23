@@ -1,61 +1,67 @@
-/* База + тёмная тема */
+/* ===== VishFind — стиль «воздух и чистота» (Manrope). База + тёмная тема: глубокий графит ===== */
 :root,
 html[data-theme='dark'] {
-  --bg0: #121416;
-  --bg1: #1a1d21;
-  --ink: #f3f1ec;
-  --muted: #9b9a94;
-  --accent: #b7c48a;
-  --accent-ink: #15180f;
-  --accent-dim: rgba(183, 196, 138, 0.18);
-  --glass: rgba(255, 255, 255, 0.08);
-  --glass-strong: rgba(255, 255, 255, 0.12);
-  --stroke: rgba(255, 255, 255, 0.2);
-  --stroke-soft: rgba(255, 255, 255, 0.1);
+  --bg0: #101110;
+  --bg1: #1a1c1a;
+  --bg2: #232524;
+  --ink: #f2f2ef;
+  --muted: #9c9c96;
+  --accent: #b6d48e;
+  --accent-ink: #151b0d;
+  --accent-dim: rgba(182, 212, 142, 0.16);
+  --glass: rgba(255, 255, 255, 0.06);
+  --glass-strong: rgba(255, 255, 255, 0.1);
+  --stroke: rgba(242, 242, 239, 0.16);
+  --stroke-soft: rgba(242, 242, 239, 0.08);
   --danger: #e8a0a0;
   --ok: #c5d4a8;
-  --shadow: rgba(0, 0, 0, 0.35);
+  --shadow: rgba(0, 0, 0, 0.4);
   --input-bg: rgba(0, 0, 0, 0.22);
-  --blob-a: rgba(183, 196, 138, 0.14);
-  --blob-b: rgba(100, 120, 140, 0.18);
-  --blob-c: rgba(60, 68, 78, 0.32);
-  --noise-opacity: 0.04;
-  --btn-ghost-hover: rgba(255, 255, 255, 0.06);
+  --blob-a: rgba(182, 212, 142, 0.1);
+  --blob-b: rgba(140, 150, 160, 0.1);
+  --blob-c: rgba(70, 76, 72, 0.22);
+  --noise-opacity: 0.03;
+  --btn-ghost-hover: rgba(242, 242, 239, 0.06);
 }
 
-/* Светлая тема — спокойный камень, без оранжевого */
+/* Светлая тема: почти белый фон, мягкий салатовый акцент */
 html[data-theme='light'] {
-  --bg0: #eef0f2;
-  --bg1: #f7f8f9;
-  --ink: #1c1e22;
-  --muted: #5c6068;
-  --accent: #5f6b45;
-  --accent-ink: #f7f8f5;
-  --accent-dim: rgba(95, 107, 69, 0.12);
-  --glass: rgba(255, 255, 255, 0.55);
-  --glass-strong: rgba(255, 255, 255, 0.72);
-  --stroke: rgba(28, 30, 34, 0.14);
-  --stroke-soft: rgba(28, 30, 34, 0.08);
+  --bg0: #fbfbf9;
+  --bg1: #ffffff;
+  --bg2: #f3f3f1;
+  --ink: #1a1a18;
+  --muted: #6e6e6a;
+  --accent: #9dbd72;
+  --accent-ink: #161d0f;
+  --accent-dim: rgba(157, 189, 114, 0.14);
+  --glass: rgba(255, 255, 255, 0.6);
+  --glass-strong: rgba(255, 255, 255, 0.85);
+  --stroke: rgba(26, 26, 24, 0.12);
+  --stroke-soft: rgba(26, 26, 24, 0.06);
   --danger: #a33b3b;
   --ok: #3d5a2e;
-  --shadow: rgba(28, 30, 34, 0.08);
-  --input-bg: rgba(255, 255, 255, 0.7);
-  --blob-a: rgba(95, 107, 69, 0.12);
-  --blob-b: rgba(120, 140, 160, 0.14);
-  --blob-c: rgba(180, 190, 200, 0.35);
-  --noise-opacity: 0.03;
-  --btn-ghost-hover: rgba(28, 30, 34, 0.05);
+  --shadow: rgba(22, 25, 20, 0.08);
+  --input-bg: rgba(255, 255, 255, 0.85);
+  --blob-a: rgba(157, 189, 114, 0.1);
+  --blob-b: rgba(150, 160, 170, 0.1);
+  --blob-c: rgba(200, 206, 196, 0.22);
+  --noise-opacity: 0.02;
+  --btn-ghost-hover: rgba(26, 26, 24, 0.05);
 }
 
 :root {
   --mono: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', Consolas, monospace;
-  --sans: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-  --display: 'Literata', Georgia, 'Times New Roman', serif;
-  --max: 720px;
-  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --blur: 20px;
-  --blur-mobile: 12px;
-  --radius: 16px;
+  /* Manrope — локальные файлы в fonts/ (кириллица + латиница), объявлены в css/fonts.css */
+  --sans: 'Manrope', 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --display: var(--sans);
+  --max: 900px;
+  --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --dur: 200ms;
+  --blur: 16px;
+  --blur-mobile: 10px;
+  --radius: 18px;
+  --radius-sm: 12px;
+  --radius-lg: 28px;
 }
 
 *,
@@ -875,5 +881,359 @@ html[data-theme='light'] .glass {
   .offers-row {
     opacity: 1;
     transform: none;
+  }
+}
+
+/* ===== VishFind — стиль «воздух и чистота» (Manrope): переопределения без изменения разметки и JS ===== */
+*,
+*::before,
+*::after {
+  -webkit-tap-highlight-color: transparent;
+}
+html {
+  scroll-padding-top: 72px;
+}
+
+/* Логотип VishFind */
+.brand {
+  font-family: var(--sans);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.brand::after {
+  content: '·';
+  color: var(--accent);
+  margin-left: 3px;
+}
+.brand:hover {
+  color: var(--accent);
+}
+
+/* Минимальный размер касаний 44×44 px */
+.nav a,
+.theme-toggle,
+.offers-open,
+.source-row .btn,
+.btn {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Заголовки панелей и метки — Manrope, без «моно»-подачи */
+.criteria-panel h2,
+.understood h2 {
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 1.12rem;
+  letter-spacing: -0.01em;
+}
+.hero-kicker,
+.offers-meta,
+.source-meta,
+.criteria-label {
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Hero: крупная типографика и воздух */
+.hero {
+  padding: 64px 0 30px;
+}
+.hero h1 {
+  font-family: var(--sans);
+  font-size: clamp(2.2rem, 7vw, 3.8rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  max-width: 18ch;
+}
+.hero-lead {
+  max-width: 48ch;
+  font-size: 1.1rem;
+  line-height: 1.65;
+}
+
+/* Поиск: единая «таблетка» без стеклянных излишеств */
+.search-box {
+  max-width: 640px;
+  background: var(--bg2);
+  border-color: var(--stroke-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 30px var(--shadow);
+}
+.search-box:focus-within {
+  transform: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim), 0 10px 30px var(--shadow);
+}
+.search-input {
+  min-height: 56px;
+  font-size: 1.06rem;
+  font-weight: 500;
+}
+
+/* Кнопка «Искать» — крупная, тач-дружелюбная */
+.btn-primary {
+  min-height: 52px;
+  min-width: 52px;
+  padding: 0 26px;
+  background: var(--ink);
+  color: var(--bg0);
+  border-radius: var(--radius-sm);
+  font-weight: 650;
+  box-shadow: none;
+  transition: background var(--dur) var(--ease), transform var(--dur) var(--ease), filter var(--dur) var(--ease);
+}
+.btn-primary:hover {
+  filter: brightness(1.07);
+  color: var(--bg0);
+  background: var(--accent);
+}
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+/* Убираем декоративный градиент поверх «стеклянных» панелей */
+.glass::before {
+  background: none;
+}
+
+/* Карточки предложений: сетка, скругление, мягкая тень */
+.offers-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+.offers-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  align-items: start;
+  background: var(--bg1);
+  border: 1px solid var(--stroke-soft);
+  border-top: 3px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 24px var(--shadow);
+  margin-bottom: 0;
+  padding: 18px;
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.offers-row:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px var(--shadow);
+}
+.offers-row:last-child {
+  margin-bottom: 0;
+}
+.offers-name {
+  font-family: var(--sans);
+  font-size: 1.04rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.offers-price {
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 1.02rem;
+}
+.offers-open {
+  justify-self: start;
+  margin-top: 4px;
+}
+
+/* Площадки: строки с комфортной высотой касания */
+.source-row {
+  min-height: 56px;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  transition: background var(--dur) var(--ease);
+}
+.source-row:hover {
+  background: var(--bg2);
+}
+
+/* Пустое состояние предложений */
+.offers-empty {
+  padding: 16px 0 8px;
+}
+
+/* Безопасные области iPhone */
+.site-header {
+  top: max(12px, env(safe-area-inset-top));
+  margin-top: max(12px, env(safe-area-inset-top));
+}
+.site-footer {
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+/* Мобильная адаптация 320–480 px */
+@media (max-width: 480px) {
+  .hero {
+    padding: 44px 0 22px;
+  }
+  .hero h1 {
+    font-size: clamp(1.9rem, 8vw, 2.4rem);
+  }
+  .search-box {
+    border-radius: var(--radius);
+  }
+  .search-input {
+    min-height: 52px;
+    font-size: 1rem;
+  }
+  .btn-primary {
+    width: 100%;
+    min-height: 48px;
+  }
+  .offers-list {
+    grid-template-columns: 1fr;
+  }
+  .offers-row {
+    padding: 14px;
+  }
+  .source-row .btn,
+  .offers-open {
+    width: 100%;
+  }
+  .brand {
+    font-size: 1.35rem;
+  }
+}
+
+/* ===== Страницы about/contacts: карточки и заметки ===== */
+.vf-contact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--bg1);
+  border: 1px solid var(--stroke-soft);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 24px var(--shadow);
+  padding: 16px 18px;
+  margin: 10px 0 22px;
+}
+.vf-contact a {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+.vf-contact a::after {
+  content: ' →';
+  color: var(--muted);
+}
+.vf-links {
+  list-style: none;
+  margin: 0 0 22px;
+  padding: 0;
+}
+.vf-links li {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  border-bottom: 1px solid var(--stroke-soft);
+}
+.vf-links a {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.vf-links a::after {
+  content: '→';
+  color: var(--muted);
+}
+.vf-note {
+  background: var(--bg2);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 14px 18px;
+  margin: 18px 0;
+}
+
+/* ===== Мобильный фикс: 320–430 px, тач-цели 44 px, запрет горизонтального скролла ===== */
+html {
+  overflow-x: clip;
+}
+
+/* Тач-цели ≥ 44×44 для всех интерактивных элементов */
+.examples button,
+.photo-clear,
+.btn-ghost,
+.criteria-actions .btn,
+.theme-toggle,
+.nav a,
+.offers-open,
+.source-row .btn,
+.btn {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Перенос длинных слов — без выхода за край карточки/экрана */
+.offers-name,
+.offers-meta,
+.source-name,
+.source-meta,
+.page code,
+.hero-lead,
+.offers-title,
+.offers-updated {
+  overflow-wrap: anywhere;
+}
+
+/* Шапка: навигация сворачивается раньше, чтобы кнопка «Тема» была доступна */
+@media (max-width: 560px) {
+  .nav {
+    display: none;
+  }
+  .header-right {
+    gap: 8px;
+  }
+}
+
+/* Очень узкие экраны 320–360 px: оптимизация воздуха и отступов */
+@media (max-width: 360px) {
+  .wrap {
+    width: min(100% - 20px, var(--max));
+  }
+  .hero {
+    padding: 36px 0 20px;
+  }
+  .hero h1 {
+    font-size: clamp(1.75rem, 8vw, 2.1rem);
+  }
+  .hero-lead {
+    font-size: 0.98rem;
+  }
+  .search-input {
+    min-height: 48px;
+    padding: 12px 14px;
+    font-size: 0.98rem;
+  }
+  .btn-primary {
+    min-height: 46px;
+  }
+  .brand {
+    font-size: 1.25rem;
+  }
+  .site-header .wrap {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .vf-contact {
+    padding: 12px 14px;
+  }
+  .offers-row {
+    padding: 12px;
   }
 }
