@@ -28,29 +28,64 @@ for (const name of ['.env', 'env.txt']) {
 }
 
 const PORT = Number(process.env.PORT || 3000);
+/** Для хостинга слушаем все интерфейсы; локально можно HOST=127.0.0.1 */
+const HOST = process.env.HOST || '0.0.0.0';
 const AI_ENABLED = String(process.env.AI_ENABLED || 'false').toLowerCase() === 'true';
+/** Лимит тела: без фото достаточно малого JSON; с AI — до ~9 МБ (base64). */
+const BODY_LIMIT_SEARCH = AI_ENABLED ? 9 * 1024 * 1024 : 64 * 1024;
 const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434').replace(/\/$/, '');
-// qwen3-vl:2b (без -instruct) часто кладёт ответ в thinking и оставляет content пустым.
-const MODEL = process.env.OLLAMA_MODEL || 'qwen3-vl:2b-instruct';
+// Лучше *-instruct: иначе ответ может уйти в thinking при пустом content.
+const MODEL = process.env.OLLAMA_MODEL || 'qwen3-vl:4b-instruct';
 const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_SEC || 90) * 1000;
-/** Таймаут разбора фото — 90 с (AbortController). */
+/** Таймаут одного вызова Ollama при разборе фото — 90 с. */
 const PHOTO_TIMEOUT_MS = Math.min(
   Number(process.env.PHOTO_TIMEOUT_SEC || 90) * 1000,
   90_000
 );
+/** schema = один проход JSON Schema; twopass = свободное описание → JSON; auto = schema, при скудном результате twopass */
+const PHOTO_PIPELINE = String(process.env.PHOTO_PIPELINE || 'auto').toLowerCase();
 
-/** JSON Schema для structured outputs Ollama (docs.ollama.com/capabilities/structured-outputs) */
+/** JSON Schema для structured outputs Ollama */
 const PHOTO_FORMAT = {
   type: 'object',
   properties: {
-    category: { type: ['string', 'null'] },
-    color: { type: ['string', 'null'] },
+    garment_type: { type: ['string', 'null'] },
+    subtype: { type: ['string', 'null'] },
+    color_primary: { type: ['string', 'null'] },
+    color_extra: { type: 'array', items: { type: 'string' } },
     material: { type: ['string', 'null'] },
-    style: { type: ['string', 'null'] },
-    brand_guess: { type: ['string', 'null'] },
+    pattern: { type: ['string', 'null'] },
+    collar: { type: ['string', 'null'] },
+    closure: { type: ['string', 'null'] },
+    pockets: { type: ['string', 'null'] },
+    length: { type: ['string', 'null'] },
+    fit: { type: ['string', 'null'] },
+    hardware_and_details: { type: ['string', 'null'] },
+    era_or_style: { type: ['string', 'null'] },
+    visible_text: { type: 'array', items: { type: 'string' } },
+    brand: { type: ['string', 'null'] },
+    model_name: { type: ['string', 'null'] },
     description: { type: ['string', 'null'] },
   },
-  required: ['category', 'color', 'material', 'style', 'brand_guess', 'description'],
+  required: [
+    'garment_type',
+    'subtype',
+    'color_primary',
+    'color_extra',
+    'material',
+    'pattern',
+    'collar',
+    'closure',
+    'pockets',
+    'length',
+    'fit',
+    'hardware_and_details',
+    'era_or_style',
+    'visible_text',
+    'brand',
+    'model_name',
+    'description',
+  ],
 };
 const TAVILY_KEY = process.env.TAVILY_API_KEY || '';
 const OLLAMA_KEY = process.env.OLLAMA_API_KEY || '';
@@ -75,9 +110,23 @@ const NOTE =
   'Это переходы на поиск площадок, цены и наличие не проверялись';
 
 // ---------- вспомогательное ----------
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  'Cross-Origin-Resource-Policy': 'same-origin',
+  // inline script темы в HTML — нужен 'unsafe-inline' для script
+  'Content-Security-Policy':
+    "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; " +
+    "img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; " +
+    "connect-src 'self'; font-src 'self'; object-src 'none'",
+};
+
 function send(res, status, data) {
   const body = typeof data === 'string' ? data : JSON.stringify(data);
   res.writeHead(status, {
+    ...SECURITY_HEADERS,
     'Content-Type': typeof data === 'string' ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
   });
@@ -138,6 +187,8 @@ function cleanAttr(v) {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   let s = String(v).trim();
   if (!s) return null;
+  // Ollama иногда отдаёт строку "null" вместо JSON null
+  if (/^(null|none|undefined|n\/a|nil)$/i.test(s)) return null;
   // модель часто пишет «не указано» вместо null; \b с кириллицей ненадёжен
   s = s
     .replace(/(^|[\s,;:.]+)(не\s*указан[оаые]?|неизвестн\w*|unknown|n\/a|none|null)(?=$|[\s,;:.]+)/gi, ' ')
@@ -146,6 +197,20 @@ function cleanAttr(v) {
     .trim();
   if (!s || /^(null|none|unknown|n\/a|неизвестно|нет)$/i.test(s)) return null;
   return s;
+}
+
+/** Честный отказ: на фото нет одежды. */
+function isNoGarmentResult(fields) {
+  if (!fields) return true;
+  const hasType = !!(cleanAttr(fields.garment_type) || cleanAttr(fields.subtype));
+  const d = String(fields.description || '').toLowerCase();
+  const saysNo =
+    /нет одежд|не\s*(видн\w+\s+)?одежд|одежд\w+\s+нет|no clothing|not (wearing|a garment)|электрон|смартфон|наушник|phone|headphones/i.test(
+      d
+    );
+  if (saysNo && !hasType) return true;
+  if (!hasType && !cleanAttr(fields.color_primary) && !cleanAttr(fields.material)) return true;
+  return false;
 }
 
 /** attributes из фото/ручной правки: заполняют только пустые поля текста (текст важнее). */
@@ -169,18 +234,59 @@ function applyAttributes(parsed, attrs) {
 
 function mergeVisionIntoParsed(parsed, analysis) {
   // Явный текст пользователя важнее догадок модели
-  const descBits = [analysis.material, analysis.style, analysis.description]
+  const typeLabel =
+    [analysis.garment_type, analysis.subtype].map(cleanAttr).filter(Boolean).join(' ') ||
+    cleanAttr(analysis.category);
+  const colorExtra = Array.isArray(analysis.color_extra)
+    ? analysis.color_extra.map(cleanAttr).filter(Boolean)
+    : [];
+  const colorMain = cleanAttr(analysis.color_primary) || cleanAttr(analysis.color);
+  const colorJoined = [colorMain, ...colorExtra].filter(Boolean).join(', ') || null;
+  const descBits = [
+    analysis.material,
+    analysis.pattern,
+    analysis.closure,
+    analysis.hardware_and_details,
+    analysis.era_or_style,
+    analysis.description,
+  ]
     .map(cleanAttr)
     .filter(Boolean);
-  // без дубля search_phrase — иначе «не указано» и шум размножаются
   return applyAttributes(parsed, {
-    category: analysis.category,
-    color: analysis.color,
-    brand: analysis.visible_brand || analysis.brand_guess,
+    category: typeLabel,
+    color: colorJoined,
+    brand: analysis.brand,
     size: analysis.size,
     budget: analysis.max_price_rub,
-    description: descBits.join(' ') || cleanAttr(analysis.search_phrase),
+    description: descBits.join('; ') || cleanAttr(analysis.search_phrase),
   });
+}
+
+/** Насколько заполнен разбор (для auto → twopass). */
+function photoDetailScore(fields) {
+  if (!fields) return 0;
+  const keys = [
+    'garment_type',
+    'subtype',
+    'color_primary',
+    'material',
+    'pattern',
+    'collar',
+    'closure',
+    'pockets',
+    'length',
+    'fit',
+    'hardware_and_details',
+    'era_or_style',
+    'description',
+  ];
+  let n = 0;
+  for (const k of keys) if (cleanAttr(fields[k])) n += 1;
+  if (Array.isArray(fields.color_extra) && fields.color_extra.some((x) => cleanAttr(x))) n += 1;
+  if (Array.isArray(fields.visible_text) && fields.visible_text.some((x) => cleanAttr(x))) n += 1;
+  if (cleanAttr(fields.brand)) n += 1;
+  if (cleanAttr(fields.model_name)) n += 1;
+  return n;
 }
 
 // =====================================================================
@@ -192,10 +298,14 @@ async function handleSearch(req, res) {
 
   let body;
   try {
-    body = JSON.parse(await readBody(req, 9 * 1024 * 1024));
+    body = JSON.parse(await readBody(req, BODY_LIMIT_SEARCH));
   } catch (e) {
     return send(res, e.status === 413 ? 413 : 400, {
-      error: e.status === 413 ? 'Фото или запрос слишком большие' : 'Некорректный JSON',
+      error: e.status === 413
+        ? AI_ENABLED
+          ? 'Фото или запрос слишком большие'
+          : 'Запрос слишком большой'
+        : 'Некорректный JSON',
     });
   }
 
@@ -208,7 +318,11 @@ async function handleSearch(req, res) {
   const attrsOnly = !!(attrs && body.attributes_priority === true);
 
   if (!query && !image && !attrs) {
-    return send(res, 400, { error: 'Введите текстовый запрос или приложите фото' });
+    return send(res, 400, {
+      error: AI_ENABLED
+        ? 'Введите текстовый запрос или приложите фото'
+        : 'Введите текстовый запрос',
+    });
   }
   if (query.length > 300) {
     return send(res, 400, { error: 'Запрос слишком длинный (максимум 300 символов)' });
@@ -236,12 +350,14 @@ async function handleSearch(req, res) {
     parsed = applyAttributes(parsed, attrs);
   }
   let photo_used = false;
+  let photo_attrs = null;
+  let photo_pipeline = null;
 
   if (image) {
     if (!AI_ENABLED) {
       return send(res, 503, {
         error:
-          'Разбор фото выключен (AI_ENABLED=false). Включите AI_ENABLED=true в .env, установите Ollama и модель qwen3-vl:2b-instruct, затем перезапустите сервер. Текстовый поиск без фото работает и так.',
+          'Разбор фото выключен (AI_ENABLED=false). Включите AI_ENABLED=true в .env, установите Ollama и модель qwen3-vl:4b-instruct, затем перезапустите сервер. Текстовый поиск без фото работает и так.',
         ai_enabled: false,
       });
     }
@@ -250,24 +366,28 @@ async function handleSearch(req, res) {
       : findMovieLegacy(query);
     try {
       const analysis = await analyze(query, image, movieObj);
+      photo_attrs = publicPhotoAttrs(analysis);
+      photo_pipeline = analysis.pipeline || null;
       parsed = mergeVisionIntoParsed(parsed, analysis);
       photo_used = true;
     } catch (e) {
       console.warn('Фотоанализ не удался:', e.message);
       let msg = `Разбор фото не удался: ${e.message}`;
       if (e.name === 'TimeoutError') {
-        msg = `Модель не ответила за ${Math.round(OLLAMA_TIMEOUT_MS / 1000)} с. Попробуйте меньшее фото или проверьте Ollama.`;
+        msg = `Модель не ответила за ${Math.round(PHOTO_TIMEOUT_MS / 1000)} с. Попробуйте меньшее фото или проверьте Ollama.`;
       } else if (/fetch failed|ECONNREFUSED/i.test(e.message + (e.cause ? e.cause.message : ''))) {
         msg =
-          'Ollama не запущена. Установите Ollama, выполните ollama pull qwen3-vl:2b, запустите Ollama и повторите.';
+          'Ollama не запущена. Установите Ollama, выполните ollama pull qwen3-vl:4b-instruct, запустите Ollama и повторите.';
       }
       // Честно: не подменяем неудачный анализ «успехом»
       const friendly =
-        /JSON|формат|разобрать|распознал|Failed to load image|400/i.test(msg) ||
+        /JSON|формат|разобрать|распозна|Failed to load image|400|нет одежд/i.test(msg) ||
         e.name === 'TimeoutError';
       return send(res, 502, {
         error: friendly
-          ? 'Не удалось разобрать фото. Опишите вещь словами.'
+          ? /нет одежд/i.test(msg)
+            ? 'На фото не видно одежды. Загрузите фото вещи или опишите словами.'
+            : 'Не удалось разобрать фото. Опишите вещь словами.'
           : msg,
         detail: msg,
         photo_used: false,
@@ -308,6 +428,8 @@ async function handleSearch(req, res) {
       rest: parsed.rest,
       search_phrase: parsed.search_phrase,
     },
+    photo: photo_attrs,
+    photo_pipeline,
     sources,
     photo_used,
     prices: null,
@@ -385,13 +507,126 @@ function buildPhotoPrompt(query, movie, strict) {
   const lines = [
     strict
       ? 'Ответь ТОЛЬКО валидным JSON по схеме. Никакого текста вокруг, никаких markdown.'
-      : 'Опиши одежду на фото для поиска в магазине.',
-    'Поля (на русском): category, color, material, style, brand_guess (или null), description (одно короткое предложение).',
-    'Не выдумывай бренд, размер и цену: если не видно — null.',
+      : 'Разбери одежду на фото максимально детально для поиска похожих вещей.',
+    'Все текстовые значения — на русском (кроме дословного visible_text). JSON null, не строка "null".',
+    'Поля: garment_type, subtype, color_primary, color_extra[], material, pattern, collar, closure, pockets, length, fit, hardware_and_details, era_or_style, visible_text[], brand, model_name, description.',
+    'subtype — узкий фасон (бомбер, косуха, авиатор, тракер и т.п.), если видно; иначе null.',
+    'era_or_style — только если явно видно (90-е, workwear, авангард); иначе null.',
+    'brand и model_name: ТОЛЬКО если логотип или название читаются на фото. Иначе строго null. Не угадывай по силуэту.',
+    'visible_text — читаемый текст/логотипы/бирки дословно; если нечитаемо — [].',
+    'Если на фото нет одежды — garment_type=null и description честно скажи, что одежды нет.',
+    'Не выдумывай размер и цену. Неуверенные поля — null или [].',
+    'description — одно предложение по-русски.',
     query ? `Дополнительный текст покупателя: """${query}"""` : '',
     movie ? `Возможный образ из фильма «${movie.title}»: ${movie.description}.` : '',
   ];
   return lines.filter(Boolean).join('\n');
+}
+
+function buildFreeDescribePrompt(query, movie) {
+  const lines = [
+    'Опиши одежду на фото подробно по-русски одним связным текстом (8–15 предложений максимум).',
+    'Укажи тип и подтип, цвета, материал, крой, воротник, застёжку, карманы, длину, фурнитуру, принты, потёртости, эпоху/стиль если видно.',
+    'Любой читаемый текст/логотип/бирку процитируй дословно. Бренд и модель называй ТОЛЬКО если они читаются на фото — иначе напиши, что бренд не виден.',
+    'Не выдумывай точную модель каталога и не угадывай бренд по фасону.',
+    query ? `Текст покупателя: """${query}"""` : '',
+    movie ? `Контекст фильма «${movie.title}»: ${movie.description}.` : '',
+  ];
+  return lines.filter(Boolean).join('\n');
+}
+
+function buildStructFromTextPrompt(freeText, strict) {
+  const lines = [
+    strict
+      ? 'Преобразуй описание в ТОЛЬКО валидный JSON по схеме. Без markdown.'
+      : 'Преобразуй описание одежды в JSON по схеме.',
+    'Правила: brand и model_name только если в тексте явно сказано, что они видны/прочитаны; иначе null.',
+    'Не добавляй признаков, которых нет в описании.',
+    'Описание:',
+    freeText,
+  ];
+  return lines.filter(Boolean).join('\n');
+}
+
+function asStringList(v) {
+  if (Array.isArray(v)) return v.map(cleanAttr).filter(Boolean);
+  const one = cleanAttr(v);
+  return one ? [one] : [];
+}
+
+/** brand/model только при явной видимости; отбрасываем формулировки-догадки. */
+function cleanVisibleIdentity(v) {
+  const s = cleanAttr(v);
+  if (!s) return null;
+  if (/^(не\s*виден|не\s*видно|отсутствует|нет)$/i.test(s)) return null;
+  if (/угад|похож|вероятн|возможн|скорее всего|looks?\s*like|guess|предполож/i.test(s)) return null;
+  return s;
+}
+
+/** Лёгкий перевод частых английских ярлыков модели → русский (без новых фактов). */
+const EN_TYPE_RU = {
+  jacket: 'куртка',
+  coat: 'пальто',
+  hoodie: 'худи',
+  sweatshirt: 'свитшот',
+  jeans: 'джинсы',
+  pants: 'брюки',
+  trousers: 'брюки',
+  shirt: 'рубашка',
+  tshirt: 'футболка',
+  't-shirt': 'футболка',
+  sweater: 'свитер',
+  dress: 'платье',
+  skirt: 'юбка',
+  sneakers: 'кроссовки',
+  boots: 'ботинки',
+  bomber: 'бомбер',
+  blazer: 'пиджак',
+};
+const EN_COLOR_RU = {
+  red: 'красный',
+  blue: 'синий',
+  black: 'чёрный',
+  white: 'белый',
+  green: 'зелёный',
+  yellow: 'жёлтый',
+  brown: 'коричневый',
+  gray: 'серый',
+  grey: 'серый',
+  beige: 'бежевый',
+  pink: 'розовый',
+  orange: 'оранжевый',
+  purple: 'фиолетовый',
+};
+
+function toRuLabel(s, map) {
+  const v = cleanAttr(s);
+  if (!v) return null;
+  const key = v.toLowerCase().replace(/\s+/g, ' ');
+  return map[key] || v;
+}
+
+function publicPhotoAttrs(analysis) {
+  if (!analysis) return null;
+  return {
+    garment_type: analysis.garment_type || null,
+    subtype: analysis.subtype || null,
+    color_primary: analysis.color_primary || null,
+    color_extra: Array.isArray(analysis.color_extra) ? analysis.color_extra : [],
+    material: analysis.material || null,
+    pattern: analysis.pattern || null,
+    collar: analysis.collar || null,
+    closure: analysis.closure || null,
+    pockets: analysis.pockets || null,
+    length: analysis.length || null,
+    fit: analysis.fit || null,
+    hardware_and_details: analysis.hardware_and_details || null,
+    era_or_style: analysis.era_or_style || null,
+    visible_text: Array.isArray(analysis.visible_text) ? analysis.visible_text : [],
+    brand: analysis.brand || null,
+    model_name: analysis.model_name || null,
+    description: analysis.description || null,
+  };
 }
 
 async function ollamaChat(body, timeoutMs) {
@@ -423,19 +658,55 @@ async function ollamaChat(body, timeoutMs) {
 function parsePhotoFields(raw) {
   const parsed = parseJsonLoose(raw);
   if (!parsed || typeof parsed !== 'object') return null;
-  const brandClean = cleanAttr(parsed.brand_guess) || cleanAttr(parsed.visible_brand);
-  return {
-    category: cleanAttr(parsed.category),
-    color: cleanAttr(parsed.color),
+
+  // совместимость со старой схемой (category / color / brand_guess)
+  const garmentType =
+    toRuLabel(parsed.garment_type, EN_TYPE_RU) || toRuLabel(parsed.category, EN_TYPE_RU);
+  const colorPrimary =
+    toRuLabel(parsed.color_primary, EN_COLOR_RU) || toRuLabel(parsed.color, EN_COLOR_RU);
+  const brand = cleanVisibleIdentity(parsed.brand) || cleanVisibleIdentity(parsed.brand_guess);
+
+  const fields = {
+    garment_type: garmentType,
+    subtype: toRuLabel(parsed.subtype, EN_TYPE_RU) || cleanAttr(parsed.subtype),
+    color_primary: colorPrimary,
+    color_extra: asStringList(parsed.color_extra),
     material: cleanAttr(parsed.material),
-    style: cleanAttr(parsed.style),
-    brand_guess: brandClean,
+    pattern: cleanAttr(parsed.pattern),
+    collar: cleanAttr(parsed.collar),
+    closure: cleanAttr(parsed.closure),
+    pockets: cleanAttr(parsed.pockets),
+    length: cleanAttr(parsed.length),
+    fit: cleanAttr(parsed.fit),
+    hardware_and_details: cleanAttr(parsed.hardware_and_details),
+    era_or_style: cleanAttr(parsed.era_or_style) || cleanAttr(parsed.style),
+    visible_text: asStringList(parsed.visible_text),
+    brand,
+    model_name: cleanVisibleIdentity(parsed.model_name),
     description: cleanAttr(parsed.description),
-    visible_brand: brandClean,
+    // для mergeVisionIntoParsed / старого кода
+    category: garmentType,
+    color: colorPrimary,
+    visible_brand: brand,
+    brand_guess: brand,
     size: null,
     max_price_rub: null,
     search_phrase: null,
   };
+
+  const phraseBits = [
+    fields.color_primary,
+    ...(fields.color_extra || []),
+    fields.material,
+    fields.garment_type,
+    fields.subtype,
+    fields.pattern,
+    fields.closure,
+    fields.hardware_and_details,
+    fields.brand,
+  ].filter(Boolean);
+  fields.search_phrase = phraseBits.join(' ') || fields.description;
+  return fields;
 }
 
 /** content иногда пустой у thinking-моделей — берём thinking как запасной текст. */
@@ -450,66 +721,136 @@ function extractModelText(message) {
   return thinking;
 }
 
-/**
- * Разбор фото через Ollama vision.
- * Нужен Ollama с поддержкой format=JSON Schema (обычно 0.5+, лучше свежий релиз).
- * Изображение — чистый base64 без data:-префикса.
- */
-async function analyze(query, imageB64, movie) {
-  if (!imageB64) throw new Error('Нет изображения для анализа');
-
-  const runOnce = async (strict) => {
-    const message = {
-      role: 'user',
-      content: buildPhotoPrompt(query, movie, strict),
-      images: [imageB64],
-    };
+async function ollamaVisionJson(imageB64, prompt, strictFallbackPrompt) {
+  const tryChat = async (content, useSchema) => {
+    const message = { role: 'user', content };
+    if (imageB64) message.images = [imageB64];
     const base = {
       model: MODEL,
       messages: [message],
       stream: false,
-      format: PHOTO_FORMAT,
       keep_alive: '30m',
-      options: { temperature: 0, num_predict: 400 },
+      options: { temperature: 0, num_predict: 900 },
     };
-    let data;
+    if (useSchema) base.format = PHOTO_FORMAT;
+    else base.format = 'json';
     try {
-      data = await ollamaChat({ ...base, think: false }, PHOTO_TIMEOUT_MS);
+      return await ollamaChat({ ...base, think: false }, PHOTO_TIMEOUT_MS);
     } catch (e) {
-      if (e.status === 400) {
-        // модель/версия не приняла schema или think — упрощённый JSON-режим
-        data = await ollamaChat({ ...base, format: 'json' }, PHOTO_TIMEOUT_MS);
-      } else throw e;
+      if (e.status === 400 && useSchema) {
+        return ollamaChat({ ...base, format: 'json', think: false }, PHOTO_TIMEOUT_MS);
+      }
+      throw e;
     }
-    const raw = extractModelText(data && data.message);
-    const fields = parsePhotoFields(raw);
-    if (!fields) {
-      const err = new Error('Модель вернула ответ не в формате JSON');
-      err.raw = raw;
-      throw err;
-    }
-    // хоть одно полезное поле
-    if (!fields.category && !fields.color && !fields.description && !fields.material) {
-      const err = new Error('Модель не распознала одежду на фото');
-      err.raw = raw;
-      throw err;
-    }
-    const phraseBits = [fields.color, fields.material, fields.category, fields.style, fields.brand_guess]
-      .filter(Boolean);
-    fields.search_phrase = phraseBits.join(' ') || fields.description;
-    return fields;
   };
 
+  let data = await tryChat(prompt, true);
+  let raw = extractModelText(data && data.message);
+  let fields = parsePhotoFields(raw);
+  if (fields) return fields;
+
+  if (strictFallbackPrompt) {
+    data = await tryChat(strictFallbackPrompt, true);
+    raw = extractModelText(data && data.message);
+    fields = parsePhotoFields(raw);
+    if (fields) return fields;
+  }
+
+  const err = new Error('Модель вернула ответ не в формате JSON');
+  err.raw = raw;
+  throw err;
+}
+
+async function analyzeSchema(query, imageB64, movie) {
+  const fields = await ollamaVisionJson(
+    imageB64,
+    buildPhotoPrompt(query, movie, false),
+    buildPhotoPrompt(query, movie, true)
+  );
+  if (isNoGarmentResult(fields)) {
+    throw new Error('На фото не удалось распознать одежду');
+  }
+  fields.pipeline = 'schema';
+  return fields;
+}
+
+/** Двухпроходный: свободное описание по фото → JSON без картинки (только текст). */
+async function analyzeTwoPass(query, imageB64, movie) {
+  const freeMsg = {
+    model: MODEL,
+    messages: [
+      {
+        role: 'user',
+        content: buildFreeDescribePrompt(query, movie),
+        images: [imageB64],
+      },
+    ],
+    stream: false,
+    keep_alive: '30m',
+    options: { temperature: 0, num_predict: 700 },
+  };
+  let freeData;
   try {
-    return await runOnce(false);
-  } catch (first) {
-    console.warn('Фотоанализ: первая попытка не удалась:', first.message);
-    try {
-      return await runOnce(true);
-    } catch (second) {
-      console.warn('Фотоанализ: повтор не удался:', second.message);
-      throw second;
-    }
+    freeData = await ollamaChat({ ...freeMsg, think: false }, PHOTO_TIMEOUT_MS);
+  } catch (e) {
+    if (e.status === 400) freeData = await ollamaChat(freeMsg, PHOTO_TIMEOUT_MS);
+    else throw e;
+  }
+  const freeText = extractModelText(freeData && freeData.message);
+  if (!freeText || freeText.length < 20) {
+    throw new Error('Модель не дала свободное описание одежды');
+  }
+
+  // второй проход — без изображения: структурируем уже сказанное
+  const fields = await ollamaVisionJson(
+    null,
+    buildStructFromTextPrompt(freeText, false),
+    buildStructFromTextPrompt(freeText, true)
+  );
+  if (isNoGarmentResult(fields)) {
+    throw new Error('На фото не удалось распознать одежду');
+  }
+  fields.pipeline = 'twopass';
+  fields._free_text = freeText;
+  return fields;
+}
+
+/**
+ * Разбор фото через Ollama vision.
+ * Один повтор при невалидном JSON; при неудаче — честная ошибка (без фиктивного успеха).
+ */
+async function analyze(query, imageB64, movie) {
+  if (!imageB64) throw new Error('Нет изображения для анализа');
+
+  const mode = PHOTO_PIPELINE;
+  if (mode === 'twopass') return analyzeTwoPass(query, imageB64, movie);
+  if (mode === 'schema') return analyzeSchema(query, imageB64, movie);
+
+  // auto: schema, при скудном результате — twopass
+  let schemaResult = null;
+  let schemaErr = null;
+  try {
+    schemaResult = await analyzeSchema(query, imageB64, movie);
+  } catch (e) {
+    schemaErr = e;
+    console.warn('Фотоанализ schema не удался:', e.message);
+  }
+
+  if (schemaResult && photoDetailScore(schemaResult) >= 5) {
+    return schemaResult;
+  }
+
+  try {
+    const two = await analyzeTwoPass(query, imageB64, movie);
+    if (!schemaResult) return two;
+    // берём более детальный
+    if (photoDetailScore(two) > photoDetailScore(schemaResult)) return two;
+    schemaResult.pipeline = 'schema';
+    return schemaResult;
+  } catch (e) {
+    console.warn('Фотоанализ twopass не удался:', e.message);
+    if (schemaResult) return schemaResult;
+    throw schemaErr || e;
   }
 }
 
@@ -734,6 +1075,7 @@ const MIME = {
 };
 const PRIVATE_TOP = new Set([
   'server.js',
+  'ai-search.js',
   'env.txt',
   'package.json',
   'package-lock.json',
@@ -742,6 +1084,10 @@ const PRIVATE_TOP = new Set([
   'data',
   'lib',
   'providers',
+  'scripts',
+  'test',
+  'README.md',
+  '.gitignore',
 ]);
 
 function serveStatic(req, res) {
@@ -759,6 +1105,7 @@ function serveStatic(req, res) {
   fs.stat(full, (err, st) => {
     if (err || !st.isFile()) return send(res, 404, 'Не найдено');
     res.writeHead(200, {
+      ...SECURITY_HEADERS,
       'Content-Type': MIME[path.extname(full).toLowerCase()] || 'application/octet-stream',
       'Cache-Control': 'no-cache',
     });
@@ -766,22 +1113,33 @@ function serveStatic(req, res) {
   });
 }
 
-http
-  .createServer(async (req, res) => {
-    try {
-      const p = (req.url || '').split('?')[0];
-      if (req.method === 'POST' && p === '/api/search') return await handleSearch(req, res);
-      if (req.method === 'POST' && p === '/api/find') return await handleFind(req, res);
-      if (req.method === 'GET' && p === '/api/health') return await handleHealth(res);
-      if (req.method === 'GET' || req.method === 'HEAD') return serveStatic(req, res);
-      send(res, 405, 'Method not allowed');
-    } catch (e) {
-      console.error(e);
-      if (!res.headersSent) send(res, 500, { error: 'Внутренняя ошибка сервера' });
-    }
-  })
-  .listen(PORT, '127.0.0.1', () => {
-    console.log(`iSearch запущен: http://localhost:${PORT}`);
-    console.log(`AI_ENABLED=${AI_ENABLED} | основной API: POST /api/search`);
-    console.log(`Провайдеры: ${providers.listProviders().map((p) => `${p.id}:${p.enabled ? 'on' : 'off'}`).join(', ')}`);
-  });
+// Запуск HTTP-сервера — только при прямом запуске (npm start / node server.js).
+// При require('./server.js') из тестов сервер не поднимается, а экспортируются функции.
+if (require.main === module) {
+  http
+    .createServer(async (req, res) => {
+      try {
+        const p = (req.url || '').split('?')[0];
+        if (req.method === 'POST' && p === '/api/search') return await handleSearch(req, res);
+        if (req.method === 'POST' && p === '/api/find') return await handleFind(req, res);
+        if (req.method === 'GET' && p === '/api/health') return await handleHealth(res);
+        if (req.method === 'GET' || req.method === 'HEAD') return serveStatic(req, res);
+        send(res, 405, 'Method not allowed');
+      } catch (e) {
+        console.error(e);
+        if (!res.headersSent) send(res, 500, { error: 'Внутренняя ошибка сервера' });
+      }
+    })
+    .listen(PORT, HOST, () => {
+      const shown = HOST === '0.0.0.0' ? 'localhost' : HOST;
+      console.log(`iSearch запущен: http://${shown}:${PORT} (bind ${HOST})`);
+      console.log(`AI_ENABLED=${AI_ENABLED} | основной API: POST /api/search`);
+      console.log(`Провайдеры: ${providers.listProviders().map((p) => `${p.id}:${p.enabled ? 'on' : 'off'}`).join(', ')}`);
+    });
+}
+
+// Экспорт только для юнит-тестов (приоритет текста над фото). Поведение HTTP не меняется.
+module.exports = {
+  mergeVisionIntoParsed,
+  applyAttributes,
+};
