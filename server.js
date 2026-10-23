@@ -13,6 +13,7 @@ const path = require('path');
 const { parseQuery, buildSearchPhrase } = require('./lib/parse-query');
 const { createRateLimiter } = require('./lib/rate-limit');
 const providers = require('./providers');
+const offersApi = require('./lib/offers');
 
 const ROOT = __dirname;
 
@@ -417,6 +418,10 @@ async function handleSearch(req, res) {
   const [linksResult] = await providers.runEnabled({ parsed, sources: SOURCES });
   const sources = (linksResult && linksResult.items) || [];
 
+  // Демо-предложения: локальный слой, позиции только из data/demo-offers.json.
+  // Считаются по итоговому parsed (текст + фото + ручная правка), отдельно от sources.
+  const offersItems = offersApi.findOffers({ parsed, budget: parsed.budget });
+
   send(res, 200, {
     parsed: {
       budget: parsed.budget,
@@ -431,6 +436,11 @@ async function handleSearch(req, res) {
     photo: photo_attrs,
     photo_pipeline,
     sources,
+    offers: {
+      is_demo: true,
+      note: 'Демо-предложения: примеры, не реальный каталог. Источник — data/demo-offers.json.',
+      items: offersItems,
+    },
     photo_used,
     prices: null,
     prices_note:

@@ -78,6 +78,84 @@
     return bits.length ? bits.join(' · ') : 'Параметры почти не распознаны';
   }
 
+  function renderPhotoAttrs(photo) {
+    if (!photo || typeof photo !== 'object') return null;
+    const rows = [
+      ['Тип', photo.garment_type],
+      ['Подтип', photo.subtype],
+      ['Цвет', [photo.color_primary].concat(photo.color_extra || []).filter(Boolean).join(', ')],
+      ['Материал', photo.material],
+      ['Узор', photo.pattern],
+      ['Воротник', photo.collar],
+      ['Застёжка', photo.closure],
+      ['Карманы', photo.pockets],
+      ['Длина', photo.length],
+      ['Крой', photo.fit],
+      ['Детали', photo.hardware_and_details],
+      ['Эпоха / стиль', photo.era_or_style],
+      ['Текст на фото', Array.isArray(photo.visible_text) ? photo.visible_text.join(' · ') : ''],
+      ['Бренд (только если виден)', photo.brand],
+      ['Модель (только если читается)', photo.model_name],
+      ['Описание', photo.description],
+    ];
+    const dl = el('dl', 'photo-attrs');
+    let any = false;
+    rows.forEach(([label, val]) => {
+      if (val == null || val === '') return;
+      any = true;
+      dl.appendChild(el('dt', null, label));
+      dl.appendChild(el('dd', null, String(val)));
+    });
+    return any ? dl : null;
+  }
+
+  function criteriaItem(label, value) {
+    const item = el('div', 'criteria-item' + (value ? '' : ' is-empty'));
+    item.appendChild(el('span', 'criteria-label', label));
+    item.appendChild(el('span', 'criteria-value', value || '—'));
+    return item;
+  }
+
+  function renderCriteriaPanel(p) {
+    const panel = el('div', 'criteria-panel glass');
+    panel.appendChild(el('h2', null, 'Критерии запроса'));
+    const grid = el('div', 'criteria-grid');
+    const budget =
+      p.budget != null && p.budget !== ''
+        ? 'до ' + Number(p.budget).toLocaleString('ru-RU') + ' ₽'
+        : '';
+    [
+      ['Категория', p.category],
+      ['Цвет', p.color],
+      ['Размер', p.size],
+      ['Бюджет', budget],
+      ['Бренд', p.brand],
+      ['Фильм / образ', p.movie && p.movie.title ? p.movie.title : ''],
+    ].forEach(([label, val]) => grid.appendChild(criteriaItem(label, val || '')));
+    panel.appendChild(grid);
+
+    if (p.rest) {
+      panel.appendChild(el('p', 'understood-phrase', 'Дополнительно: ' + p.rest));
+    }
+    if (p.search_phrase) {
+      const phraseRow = el('div', 'criteria-actions');
+      phraseRow.appendChild(el('p', 'understood-phrase', 'Поисковая фраза: «' + p.search_phrase + '»'));
+      const copyBtn = el('button', 'btn btn-ghost', 'Копировать фразу');
+      copyBtn.type = 'button';
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(p.search_phrase);
+          setStatus('Фраза скопирована.', 'ok');
+        } catch (_) {
+          setStatus('Не удалось скопировать фразу.', 'error');
+        }
+      });
+      phraseRow.appendChild(copyBtn);
+      panel.appendChild(phraseRow);
+    }
+    return panel;
+  }
+
   function safeUrl(u) {
     return /^https?:\/\//i.test(u || '') ? u : null;
   }
@@ -151,6 +229,67 @@
     if (photoBtn) photoBtn.classList.remove('is-active');
   }
 
+  const CURRENCY_SYMBOL = { RUB: '₽', USD: '$', EUR: '€' };
+
+  function formatOfferPrice(offer) {
+    const n = Number(offer && offer.price);
+    if (!Number.isFinite(n)) return '';
+    const code = String((offer && offer.currency) || '').toUpperCase();
+    const sym = CURRENCY_SYMBOL[code] || code;
+    return (n.toLocaleString('ru-RU') + ' ' + sym).trim();
+  }
+
+  function formatOfferDate(iso) {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? m[3] + '.' + m[2] + '.' + m[1] : '';
+  }
+
+  /** Блок «Лучшие предложения»: рисуется независимо от sources (до раннего return). */
+  function renderOffersBlock(offers) {
+    if (!offers || typeof offers !== 'object' || !Array.isArray(offers.items)) return null;
+    const box = el('div', 'understood glass offers');
+    const h2 = el('h2', null, 'Лучшие предложения ');
+    if (offers.is_demo === true) h2.appendChild(el('span', 'offers-demo-chip', 'Демо'));
+    box.appendChild(h2);
+    box.appendChild(
+      el(
+        'p',
+        'offers-note',
+        'Демо-предложения — примеры, не реальный каталог. Цены и наличие не проверялись.'
+      )
+    );
+    if (!offers.items.length) {
+      box.appendChild(el('p', 'offers-empty', 'Пока нет подходящих демо-предложений по этому запросу.'));
+      return box;
+    }
+    const list = el('ul', 'offers-list');
+    offers.items.forEach((o) => {
+      const li = el('li', 'offers-row');
+      const main = document.createElement('div');
+      main.className = 'offers-main';
+      main.appendChild(el('p', 'offers-name', o.title || 'Без названия'));
+      const metaBits = [o.brand, o.category, o.color, o.size ? 'размер ' + o.size : null].filter(Boolean);
+      main.appendChild(el('p', 'offers-meta', metaBits.join(' · ')));
+      const price = el('p', 'offers-price', formatOfferPrice(o));
+      if (o.condition) price.appendChild(el('span', 'offers-cond', ' ' + o.condition));
+      main.appendChild(price);
+      const date = formatOfferDate(o.updated_at);
+      if (date) main.appendChild(el('p', 'offers-updated', 'Обновлено: ' + date));
+      li.appendChild(main);
+      const url = safeUrl(o.url);
+      if (url) {
+        const a = el('a', 'btn offers-open', 'Открыть у продавца');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        li.appendChild(a);
+      }
+      list.appendChild(li);
+    });
+    box.appendChild(list);
+    return box;
+  }
+
   function renderResults(data) {
     lastData = data;
     resultsBody.replaceChildren();
@@ -158,17 +297,20 @@
 
     const note = el('p', 'honest-note glass');
     note.textContent =
-      'Это переходы на поиск площадок. Цены и наличие смотрите на месте.';
+      'Ниже — критерии из вашего запроса и ссылки на поиск площадок. Цены и наличие смотрите на месте.';
     resultsBody.appendChild(note);
 
+    // Сразу в выдаче: размер, бюджет, цвет и др.
+    resultsBody.appendChild(renderCriteriaPanel(p));
+
     const block = el('div', 'understood glass');
-    block.appendChild(el('h2', null, 'Как мы поняли запрос'));
+    block.appendChild(el('h2', null, 'Правка и повторный поиск'));
     block.appendChild(el('p', 'understood-line', summaryLine(p)));
+
     if (data.photo_used) {
-      block.appendChild(el('p', 'understood-phrase', 'Распознано по фото (можно поправить ниже).'));
-    }
-    if (p.search_phrase) {
-      block.appendChild(el('p', 'understood-phrase', 'Фраза: «' + p.search_phrase + '»'));
+      block.appendChild(el('p', 'understood-phrase', 'Распознано по фото — детали ниже, их можно учесть при правке.'));
+      const photoBlock = renderPhotoAttrs(data.photo);
+      if (photoBlock) block.appendChild(photoBlock);
     }
 
     const edit = el('div', 'understood-edit');
@@ -177,6 +319,7 @@
       ['color', 'Цвет', p.color || ''],
       ['size', 'Размер', p.size || ''],
       ['budget', 'Бюджет ₽', p.budget != null ? String(p.budget) : ''],
+      ['brand', 'Бренд', p.brand || ''],
     ].forEach(([key, label, val]) => {
       const lab = el('label', null, label);
       const inp = document.createElement('input');
@@ -191,7 +334,7 @@
     const again = el('button', 'btn', 'Искать снова');
     again.type = 'button';
     again.addEventListener('click', () => {
-      const attrs = { brand: p.brand || null };
+      const attrs = {};
       edit.querySelectorAll('input[data-key]').forEach((inp) => {
         const k = inp.dataset.key;
         const v = inp.value.trim();
@@ -208,12 +351,18 @@
     block.appendChild(edit);
     resultsBody.appendChild(block);
 
+    // Демо-предложения: блок показывается независимо от sources (до раннего return).
+    const offersBlock = renderOffersBlock(data.offers);
+    if (offersBlock) resultsBody.appendChild(offersBlock);
+
     const sources = Array.isArray(data.sources) ? data.sources : [];
     if (!sources.length) {
       resultsBody.appendChild(el('p', 'empty', 'Нет проверенных источников.'));
       return;
     }
 
+    const markets = el('div', 'understood glass');
+    markets.appendChild(el('h2', null, 'Площадки'));
     const list = el('ul', 'source-list');
     const rows = [];
     sources.forEach((s) => {
@@ -238,7 +387,8 @@
       list.appendChild(li);
       rows.push(li);
     });
-    resultsBody.appendChild(list);
+    markets.appendChild(list);
+    resultsBody.appendChild(markets);
     staggerIn(rows);
   }
 
@@ -281,6 +431,13 @@
         throw new Error(data.error || 'Поиск не удался.');
       }
       renderResults(data);
+      try {
+        if (query) {
+          const u = new URL(window.location.href);
+          u.searchParams.set('q', query);
+          history.replaceState(null, '', u.pathname + u.search);
+        }
+      } catch (_) { /* ignore */ }
       setStatus(
         data.photo_used ? 'Фото разобрано. Цены смотрите на площадке.' : 'Готово. Цены смотрите на площадке.',
         'ok'
@@ -301,6 +458,11 @@
   }
 
   async function loadHealth() {
+    const lead = document.getElementById('hero-lead');
+    const leadPhoto =
+      'Опишите вещь текстом или приложите фото. Сервис выделит критерии (тип, цвет, размер, бюджет и др.) и откроет поиск на площадках. Цены и наличие не проверяются — их видно только на сайте магазина.';
+    const leadText =
+      'Опишите вещь текстом. Сервис выделит критерии (тип, цвет, размер, бюджет и др.) и откроет поиск на площадках. Цены и наличие не проверяются — их видно только на сайте магазина.';
     try {
       const d = await (await fetch('/api/health', { cache: 'no-store' })).json();
       aiEnabled = !!d.ai_enabled;
@@ -308,9 +470,16 @@
         photoBtn.hidden = !aiEnabled;
         photoBtn.setAttribute('aria-hidden', aiEnabled ? 'false' : 'true');
       }
+      if (lead) lead.textContent = aiEnabled ? leadPhoto : leadText;
+      if (!aiEnabled) {
+        clearPhoto();
+        if (fileInput) fileInput.value = '';
+      }
     } catch (_) {
       aiEnabled = false;
       if (photoBtn) photoBtn.hidden = true;
+      if (lead) lead.textContent = leadText;
+      clearPhoto();
     }
   }
 
@@ -358,5 +527,13 @@
     if (e.key === 'Enter') runSearch(e);
   });
 
-  loadHealth();
+  loadHealth().then(() => {
+    try {
+      const q0 = new URLSearchParams(window.location.search).get('q');
+      if (q0 && !input.value) {
+        input.value = q0.slice(0, 300);
+      }
+    } catch (_) { /* ignore */ }
+  });
 })();
+
