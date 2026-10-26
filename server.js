@@ -1,15 +1,18 @@
 'use strict';
 /**
- * iSearch — локальный сервер без npm-зависимостей (нужен Node.js 18+).
+ * VishFind — сервер без npm-зависимостей (нужен Node.js 18+).
  *  - отдаёт статику из этой папки
  *  - POST /api/search : разбор запроса правилами + ссылки на площадки (основной путь)
  *  - POST /api/find   : старый путь с Ollama/фото (выключен, пока AI_ENABLED=false)
- *  - GET  /api/health : статус без падений, если AI выключен
+ *  - GET  /api/health : статус без внешних вызовов и без секретов
+ * Настройки: lib/config.js (NODE_ENV, dev/prod). Логи: lib/logger.js (санитизация).
  * Запуск:  npm start   →   http://localhost:3000
  */
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const config = require('./lib/config');
+const { createLogger } = require('./lib/logger');
 const { parseQuery, buildSearchPhrase } = require('./lib/parse-query');
 const { createRateLimiter } = require('./lib/rate-limit');
 const providers = require('./providers');
@@ -17,40 +20,30 @@ const offersApi = require('./lib/offers');
 // eBay Browse API (реальные предложения) — опционально, только если ключи есть в .env.
 const { createEbayProvider } = require('./providers/ebay');
 const ebayProvider = createEbayProvider({
-  clientId: process.env.EBAY_CLIENT_ID || null,
-  clientSecret: process.env.EBAY_CLIENT_SECRET || null,
+  clientId: config.ebay.clientId || null,
+  clientSecret: config.ebay.clientSecret || null,
+  marketplace: config.ebay.marketplace,
+  circuitThreshold: config.ebay.circuitThreshold,
+  circuitCooldownMs: config.ebay.circuitCooldownMs,
 });
 
 const ROOT = __dirname;
 
-// ---------- настройки из .env или env.txt ----------
-for (const name of ['.env', 'env.txt']) {
-  try {
-    const text = fs.readFileSync(path.join(ROOT, name), 'utf8');
-    for (const line of text.split(/\r?\n/)) {
-      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
-      if (m && m[2] && !(m[1] in process.env)) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
-    }
-  } catch (_) { /* файла нет — нормально */ }
-}
-
-const PORT = Number(process.env.PORT || 3000);
+// ---------- настройки: lib/config.js (NODE_ENV, dev/prod, безопасные дефолты) ----------
+const PORT = config.port;
 /** Для хостинга слушаем все интерфейсы; локально можно HOST=127.0.0.1 */
-const HOST = process.env.HOST || '0.0.0.0';
-const AI_ENABLED = String(process.env.AI_ENABLED || 'false').toLowerCase() === 'true';
+const HOST = config.host;
+const AI_ENABLED = config.aiEnabled;
 /** Лимит тела: без фото достаточно малого JSON; с AI — до ~9 МБ (base64). */
-const BODY_LIMIT_SEARCH = AI_ENABLED ? 9 * 1024 * 1024 : 64 * 1024;
-const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434').replace(/\/$/, '');
+const BODY_LIMIT_SEARCH = config.bodyLimitSearch;
+const OLLAMA_URL = config.ollama.url;
 // Лучше *-instruct: иначе ответ может уйти в thinking при пустом content.
-const MODEL = process.env.OLLAMA_MODEL || 'qwen3-vl:4b-instruct';
-const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_SEC || 90) * 1000;
+const MODEL = config.ollama.model;
+const OLLAMA_TIMEOUT_MS = config.ollama.timeoutMs;
 /** Таймаут одного вызова Ollama при разборе фото — 90 с. */
-const PHOTO_TIMEOUT_MS = Math.min(
-  Number(process.env.PHOTO_TIMEOUT_SEC || 90) * 1000,
-  90_000
-);
+const PHOTO_TIMEOUT_MS = config.ollama.photoTimeoutMs;
 /** schema = один проход JSON Schema; twopass = свободное описание → JSON; auto = schema, при скудном результате twopass */
-const PHOTO_PIPELINE = String(process.env.PHOTO_PIPELINE || 'auto').toLowerCase();
+const PHOTO_PIPELINE = config.ollama.pipeline;
 
 /** JSON Schema для structured outputs Ollama */
 const PHOTO_FORMAT = {
@@ -94,17 +87,22 @@ const PHOTO_FORMAT = {
     'description',
   ],
 };
-const TAVILY_KEY = process.env.TAVILY_API_KEY || '';
-const OLLAMA_KEY = process.env.OLLAMA_API_KEY || '';
+const TAVILY_KEY = config.webSearch.tavilyKey;
+const OLLAMA_KEY = config.webSearch.ollamaKey;
 
-const searchLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
+const logger = createLogger({ level: config.logLevel });
+
+const searchLimiter = createRateLimiter({
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.max,
+});
 
 // ---------- данные ----------
 function loadJson(rel, fallback) {
   try {
     return JSON.parse(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
   } catch (e) {
-    console.warn(rel, 'не загружен:', e.message);
+    logger.warn(rel + ' не загружен', { error: e.message });
     return fallback;
   }
 }
@@ -159,16 +157,23 @@ function readBody(req, limit = 9 * 1024 * 1024) {
 }
 
 function clientIp(req) {
-  const xf = req.headers['x-forwarded-for'];
-  if (typeof xf === 'string' && xf.trim()) return xf.split(',')[0].trim();
+  // X-Forwarded-For доверяем только за платформенным прокси (TRUST_PROXY=true).
+  // Иначе клиент мог бы обойти rate limit подделкой заголовка.
+  if (config.trustProxy) {
+    const xf = req.headers['x-forwarded-for'];
+    if (typeof xf === 'string' && xf.trim()) return xf.split(',')[0].trim();
+  }
   return req.socket && req.socket.remoteAddress ? req.socket.remoteAddress : 'unknown';
 }
 
 function enforceRateLimit(req, res) {
   const hit = searchLimiter.check(clientIp(req));
   if (!hit.ok) {
+    logger.warn('rate limit exceeded', { retry_after_sec: hit.retrySec });
+    res.setHeader('Retry-After', String(hit.retrySec));
     send(res, 429, {
       error: `Слишком много запросов. Подождите около ${hit.retrySec} с и попробуйте снова.`,
+      retry_after_sec: hit.retrySec,
     });
     return false;
   }
@@ -378,7 +383,7 @@ async function handleSearch(req, res) {
       parsed = mergeVisionIntoParsed(parsed, analysis);
       photo_used = true;
     } catch (e) {
-      console.warn('Фотоанализ не удался:', e.message);
+      logger.warn('Фотоанализ не удался', { error: e.message });
       let msg = `Разбор фото не удался: ${e.message}`;
       if (e.name === 'TimeoutError') {
         msg = `Модель не ответила за ${Math.round(PHOTO_TIMEOUT_MS / 1000)} с. Попробуйте меньшее фото или проверьте Ollama.`;
@@ -433,8 +438,18 @@ async function handleSearch(req, res) {
   let ebayError = null;
   if (ebayProvider.isConfigured() && parsed.search_phrase) {
     const ebayRes = await ebayProvider.search(parsed.search_phrase);
-    if (ebayRes.ok) ebayItems = ebayRes.items;
-    else ebayError = ebayRes.error;
+    if (ebayRes.ok) {
+      ebayItems = ebayRes.items;
+    } else {
+      // Техническая причина — только в лог; клиенту — дружелюбное сообщение.
+      logger.warn('eBay search failed', {
+        error: ebayRes.error,
+        circuit_open: !!ebayRes.circuit_open,
+      });
+      ebayError = ebayRes.circuit_open
+        ? 'eBay временно недоступен. Показаны демо-предложения.'
+        : 'eBay не ответил. Показаны демо-предложения.';
+    }
   }
   const offersItems = [...ebayItems, ...demoOffersItems].slice(0, 10);
 
@@ -861,7 +876,7 @@ async function analyze(query, imageB64, movie) {
     schemaResult = await analyzeSchema(query, imageB64, movie);
   } catch (e) {
     schemaErr = e;
-    console.warn('Фотоанализ schema не удался:', e.message);
+    logger.warn('Фотоанализ schema не удался', { error: e.message });
   }
 
   if (schemaResult && photoDetailScore(schemaResult) >= 5) {
@@ -876,7 +891,7 @@ async function analyze(query, imageB64, movie) {
     schemaResult.pipeline = 'schema';
     return schemaResult;
   } catch (e) {
-    console.warn('Фотоанализ twopass не удался:', e.message);
+    logger.warn('Фотоанализ twopass не удался', { error: e.message });
     if (schemaResult) return schemaResult;
     throw schemaErr || e;
   }
@@ -996,7 +1011,7 @@ async function handleFind(req, res) {
   try {
     analysis = await analyze(query, image, movie);
   } catch (e) {
-    console.warn('Анализ не удался:', e.message);
+    logger.warn('Анализ не удался', { error: e.message });
     if (e.name === 'TimeoutError') {
       warnings.push(`Модель не ответила за ${Math.round(OLLAMA_TIMEOUT_MS / 1000)} с.`);
     } else if (/fetch failed|ECONNREFUSED/i.test(e.message + (e.cause ? e.cause.message : ''))) {
@@ -1046,8 +1061,16 @@ async function handleFind(req, res) {
 }
 
 async function handleHealth(res) {
+  // Health не дёргает внешние сервисы (Ollama/eBay): состояние берётся
+  // из кэша/счётчиков. Секреты и детали ошибок наружу не попадают.
+  const ebayStatus = ebayProvider.status();
   const payload = {
     ok: true,
+    name: 'vishfind',
+    version: config.version,
+    env: config.env,
+    uptime_sec: Math.round(process.uptime()),
+    timestamp: new Date().toISOString(),
     ai_enabled: AI_ENABLED,
     web_search: providers.websearch.enabled
       ? TAVILY_KEY
@@ -1057,29 +1080,19 @@ async function handleHealth(res) {
           : null
       : null,
     providers: providers.listProviders(),
+    ebay: {
+      configured: ebayStatus.configured,
+      circuit_open: ebayStatus.circuit_open,
+      fails: ebayStatus.fails,
+      threshold: ebayStatus.threshold,
+      last_success_at: ebayStatus.last_success_at,
+      last_error_at: ebayStatus.last_error_at,
+      last_check_at: ebayStatus.last_check_at,
+    },
+    message: AI_ENABLED
+      ? 'AI включён (локальная разработка). Работает текстовый поиск /api/search.'
+      : 'AI выключен. Работает текстовый поиск /api/search.',
   };
-
-  if (!AI_ENABLED) {
-    // Не дергаем Ollama, если AI выключен — health не должен «падать»
-    payload.ollama = null;
-    payload.model = null;
-    payload.model_installed = null;
-    payload.message = 'AI выключен. Работает текстовый поиск /api/search.';
-    return send(res, 200, payload);
-  }
-
-  let ollama = false;
-  let models = [];
-  try {
-    const r = await fetch(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(3000) });
-    if (r.ok) {
-      ollama = true;
-      models = ((await r.json()).models || []).map((m) => m.name);
-    }
-  } catch (_) { /* недоступна */ }
-  payload.ollama = ollama;
-  payload.model = MODEL;
-  payload.model_installed = models.includes(MODEL);
   send(res, 200, payload);
 }
 
@@ -1144,6 +1157,17 @@ function serveStatic(req, res) {
 // Запуск HTTP-сервера — только при прямом запуске (npm start / node server.js).
 // При require('./server.js') из тестов сервер не поднимается, а экспортируются функции.
 if (require.main === module) {
+  // Непойманные ошибки: логируем санитизированно и завершаем процесс,
+  // чтобы платформа перезапустила сервис (без «полуживого» состояния).
+  process.on('uncaughtException', (e) => {
+    logger.error('uncaughtException', logger.errorToMeta(e));
+    process.exit(1);
+  });
+  process.on('unhandledRejection', (e) => {
+    logger.error('unhandledRejection', logger.errorToMeta(e));
+    process.exit(1);
+  });
+
   http
     .createServer(async (req, res) => {
       try {
@@ -1154,15 +1178,18 @@ if (require.main === module) {
         if (req.method === 'GET' || req.method === 'HEAD') return serveStatic(req, res);
         send(res, 405, 'Method not allowed');
       } catch (e) {
-        console.error(e);
+        logger.error('unhandled request error', logger.errorToMeta(e));
         if (!res.headersSent) send(res, 500, { error: 'Внутренняя ошибка сервера' });
       }
     })
     .listen(PORT, HOST, () => {
       const shown = HOST === '0.0.0.0' ? 'localhost' : HOST;
-      console.log(`iSearch запущен: http://${shown}:${PORT} (bind ${HOST})`);
-      console.log(`AI_ENABLED=${AI_ENABLED} | основной API: POST /api/search`);
-      console.log(`Провайдеры: ${providers.listProviders().map((p) => `${p.id}:${p.enabled ? 'on' : 'off'}`).join(', ')}`);
+      logger.info(`VishFind запущен: http://${shown}:${PORT} (bind ${HOST})`, {
+        env: config.env,
+        ai_enabled: AI_ENABLED,
+        ebay_configured: ebayProvider.isConfigured(),
+      });
+      logger.info(`Провайдеры: ${providers.listProviders().map((p) => `${p.id}:${p.enabled ? 'on' : 'off'}`).join(', ')}`);
     });
 }
 
