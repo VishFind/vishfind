@@ -164,3 +164,72 @@ test('без ключей: isConfigured() === false и search() не вызыв�
   assert.equal(fake.calls.token, 0);
   assert.equal(fake.calls.search, 0);
 });
+
+test('circuit breaker: после порога ошибок поиск не ходит в сеть', async () => {
+  let calls = 0;
+  const ebay = createEbayProvider({
+    fetchImpl: async () => {
+      calls += 1;
+      throw new Error('network down');
+    },
+    ...CLIENT,
+    circuitThreshold: 2,
+    circuitCooldownMs: 60_000,
+  });
+
+  const r1 = await ebay.search('куртка');
+  assert.equal(r1.ok, false);
+  const r2 = await ebay.search('куртка');
+  assert.equal(r2.ok, false);
+  assert.equal(r2.circuit_open, true, 'после порога ошибок circuit открыт');
+
+  const r3 = await ebay.search('пальто');
+  assert.equal(r3.ok, false);
+  assert.equal(r3.circuit_open, true);
+  assert.equal(calls, 2, 'после открытия circuit breaker сеть не вызывается');
+});
+
+test('circuit breaker: успех сбрасывает счётчик ошибок', async () => {
+  let fail = true;
+  const ebay = createEbayProvider({
+    fetchImpl: async (url) => {
+      if (fail) throw new Error('network down');
+      if (url.includes('oauth2/token')) return jsonResponse({ access_token: 'tok', expires_in: 3600 });
+      return jsonResponse({ itemSummaries: [itemSummary()] });
+    },
+    ...CLIENT,
+    circuitThreshold: 2,
+    circuitCooldownMs: 60_000,
+  });
+
+  await ebay.search('куртка'); // ошибка 1
+  await ebay.search('куртка'); // ошибка 2 → circuit open
+  assert.equal((await ebay.search('куртка')).circuit_open, true);
+
+  fail = false;
+  ebay.clearCache(); // сброс circuit breaker (операционный/тестовый путь)
+  const ok = await ebay.search('куртка');
+  assert.equal(ok.ok, true);
+  const st = ebay.status();
+  assert.equal(st.fails, 0);
+  assert.equal(st.circuit_open, false);
+});
+
+test('status(): отдаёт состояние без секретов', async () => {
+  const ebay = createEbayProvider({
+    fetchImpl: async () => {
+      throw new Error('network down');
+    },
+    ...CLIENT,
+  });
+  const st0 = ebay.status();
+  assert.equal(st0.configured, true);
+  assert.equal(st0.circuit_open, false);
+
+  await ebay.search('куртка');
+  const st1 = ebay.status();
+  assert.equal(st1.fails, 1);
+  assert.ok(st1.last_error_at);
+  assert.ok(!('clientSecret' in st1), 'секреты не попадают в status()');
+  assert.ok(!('clientId' in st1), 'секреты не попадают в status()');
+});
