@@ -145,8 +145,10 @@ function readBody(req, limit = 9 * 1024 * 1024) {
     req.on('data', (c) => {
       size += c.length;
       if (size > limit) {
+        // Не уничтожаем сокет сразу: ответ 413 должен дойти до клиента.
+        // Пауза чтения + Connection: close в обработчике закроют соединение после ответа.
         reject(Object.assign(new Error('too large'), { status: 413 }));
-        req.destroy();
+        req.pause();
         return;
       }
       chunks.push(c);
@@ -312,6 +314,7 @@ async function handleSearch(req, res) {
   try {
     body = JSON.parse(await readBody(req, BODY_LIMIT_SEARCH));
   } catch (e) {
+    if (e.status === 413) res.setHeader('Connection', 'close');
     return send(res, e.status === 413 ? 413 : 400, {
       error: e.status === 413
         ? AI_ENABLED
@@ -993,6 +996,7 @@ async function handleFind(req, res) {
   try {
     body = JSON.parse(await readBody(req));
   } catch (e) {
+    if (e.status === 413) res.setHeader('Connection', 'close');
     return send(res, e.status === 413 ? 413 : 400, {
       error: e.status === 413 ? 'Фото слишком большое' : 'Некорректный запрос',
     });
