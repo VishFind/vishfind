@@ -14,12 +14,12 @@
   <script>
     (function () {
       try {
-        var k = 'isearch-theme';
-        var s = localStorage.getItem(k);
-        var t = s || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        var k = 'vishfind-theme';
+        var s = localStorage.getItem(k) || localStorage.getItem('isearch-theme');
+        var t = s || 'light';
         document.documentElement.setAttribute('data-theme', t);
       } catch (e) {
-        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.setAttribute('data-theme', 'light');
       }
     })();
   </script>
@@ -34,7 +34,8 @@
     <div class="wrap glass">
       <a class="brand" href="/">VishFind</a>
       <div class="header-right">
-        <nav class="nav" aria-label="Основное">
+        <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="site-nav">Меню</button>
+        <nav class="nav" id="site-nav" aria-label="Основное">
           <a href="/" aria-current="page">Поиск</a>
           <a href="/about.html">О проекте</a>
           <a href="/contacts.html">Контакты</a>
@@ -45,11 +46,14 @@
   </header>
 
   <main>
-    <section class="hero">
+    <section class="hero reveal">
       <div class="wrap">
+        <p class="ready" id="ready"><span class="ready-dot" id="ready-dot"></span><span id="ready-label">Проверяем сервис…</span></p>
         <p class="hero-kicker">Сервис поиска одежды</p>
         <h1>Поиск редкой и винтажной одежды</h1>
         <p class="hero-lead" id="hero-lead">Опишите вещь текстом или приложите фото. Сервис выделит критерии (тип, цвет, размер, бюджет и др.) и откроет поиск на площадках. Цены и наличие не проверяются — их видно только на сайте магазина.</p>
+
+        <div class="quick-chips" id="quick-chips" aria-label="Добавить в запрос"></div>
 
         <div class="search-box glass" id="search">
           <div class="search-row">
@@ -70,9 +74,13 @@
           </div>
         </div>
 
+        <div class="dropzone glass" id="dropzone" hidden>
+          <p>Перетащите фото сюда или нажмите «Фото»</p>
+        </div>
+
         <div class="photo-preview glass" id="photo-preview" hidden>
           <img id="photo-img" alt="Выбранное фото"/>
-          <div class="meta" id="photo-meta">Фото готово</div>
+          <div class="meta" id="photo-meta"><span class="photo-dot" aria-hidden="true"></span>Фото готово</div>
           <button type="button" class="clear" id="photo-clear">Убрать</button>
         </div>
 
@@ -87,15 +95,47 @@
       </div>
     </section>
 
-    <section class="results" id="results" aria-live="polite">
+    <section class="results reveal" id="results" aria-live="polite">
       <div class="wrap">
         <div id="results-body">
-          <p class="empty">После запроса здесь появятся критерии, разбор и ссылки на площадки.</p>
+          <p class="empty">После запроса здесь появятся ссылки на площадки и предложения.</p>
         </div>
+        <div id="compare-slot"></div>
       </div>
     </section>
 
-    <section class="how" id="how" aria-labelledby="how-title">
+    <section class="page-block reveal" id="smart-hints" aria-labelledby="hints-title">
+      <div class="wrap">
+        <h2 id="hints-title">Умные подсказки</h2>
+        <div id="smart-hints-body"></div>
+      </div>
+    </section>
+
+    <section class="page-block reveal" id="search-history" aria-labelledby="history-title">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 id="history-title">История запросов</h2>
+          <button type="button" class="btn btn-ghost" id="history-clear" hidden>Очистить историю</button>
+        </div>
+        <div id="search-history-body"></div>
+      </div>
+    </section>
+
+    <section class="page-block reveal" id="reco" aria-labelledby="reco-title">
+      <div class="wrap">
+        <h2 id="reco-title">Из ваших запросов</h2>
+        <div id="reco-body"></div>
+      </div>
+    </section>
+
+    <section class="page-block reveal" id="saved" aria-labelledby="saved-title">
+      <div class="wrap">
+        <h2 id="saved-title">Избранное</h2>
+        <div id="saved-body"></div>
+      </div>
+    </section>
+
+    <section class="how reveal" id="how" aria-labelledby="how-title">
       <div class="wrap">
         <h2 id="how-title">Как устроен поиск</h2>
         <ol class="how-list">
@@ -105,7 +145,7 @@
           </li>
           <li>
             <strong>Проверка критериев</strong>
-            <span>Вы можете поправить поля и нажать «Искать снова» — ссылки пересоберутся.</span>
+            <span>Кнопка «Что распозналось?» открывает критерии. После правки «Искать с этими критериями» снова показывает ссылки.</span>
           </li>
           <li>
             <strong>Переход на площадки</strong>
