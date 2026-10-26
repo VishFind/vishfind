@@ -181,3 +181,28 @@ test('интеграция: /api/search с чёрной курткой возв�
     `top offer должен совпадать по категории или цвету, got ${top.category}/${top.color}`
   );
 });
+
+test('интеграция: валидный запрос возвращает 200, а не 422', async () => {
+  const { status, data } = await postSearch('black jacket');
+  assert.equal(status, 200);
+  assert.ok(data.parsed && data.parsed.search_phrase);
+  assert.equal(data.parsed.color, 'чёрный');
+  assert.equal(data.parsed.category, 'куртка');
+});
+
+test('интеграция: запрос без значимых слов возвращает 422', async () => {
+  const { status, data } = await postSearch('пожалуйста найди одежду вещь');
+  assert.equal(status, 422);
+  assert.equal(data.parsed.search_phrase, null);
+});
+
+test('интеграция: 422 содержит понятное сообщение с рекомендацией и примером', async () => {
+  const { status, data } = await postSearch('ищу вещь');
+  assert.equal(status, 422);
+  assert.ok(data.error && data.error.length > 0);
+  // объясняет, что нужно ввести осмысленный запрос
+  assert.match(data.error, /распознать|признак|осмысленн|конкретнее/i);
+  // и приводит пример
+  assert.match(data.error, /куртка/i);
+  assert.equal(data.keep_text_input, true);
+});

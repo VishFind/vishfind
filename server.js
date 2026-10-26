@@ -14,6 +14,12 @@ const { parseQuery, buildSearchPhrase } = require('./lib/parse-query');
 const { createRateLimiter } = require('./lib/rate-limit');
 const providers = require('./providers');
 const offersApi = require('./lib/offers');
+// eBay Browse API (реальные предложения) — опционально, только если ключи есть в .env.
+const { createEbayProvider } = require('./providers/ebay');
+const ebayProvider = createEbayProvider({
+  clientId: process.env.EBAY_CLIENT_ID || null,
+  clientSecret: process.env.EBAY_CLIENT_SECRET || null,
+});
 
 const ROOT = __dirname;
 
@@ -400,7 +406,8 @@ async function handleSearch(req, res) {
 
   if (!parsed.search_phrase) {
     return send(res, 422, {
-      error: 'Не удалось собрать поисковую фразу',
+      error:
+        'Не удалось распознать признаки в запросе. Введите осмысленный поисковый запрос: категория, цвет, размер или бренд, например «чёрная куртка до 15 000, размер M».',
       parsed: {
         budget: parsed.budget,
         size: parsed.size,
@@ -411,6 +418,7 @@ async function handleSearch(req, res) {
         rest: parsed.rest,
         search_phrase: parsed.search_phrase,
       },
+      keep_text_input: true,
       note: NOTE,
     });
   }
@@ -418,9 +426,17 @@ async function handleSearch(req, res) {
   const [linksResult] = await providers.runEnabled({ parsed, sources: SOURCES });
   const sources = (linksResult && linksResult.items) || [];
 
-  // Демо-предложения: локальный слой, позиции только из data/demo-offers.json.
-  // Считаются по итоговому parsed (текст + фото + ручная правка), отдельно от sources.
-  const offersItems = offersApi.findOffers({ parsed, budget: parsed.budget });
+  // Предложения: реальные из eBay (если настроен) + локальные демо.
+  // Ошибки eBay не ломают поиск: возвращаются демо-предложения и sources.
+  const demoOffersItems = offersApi.findOffers({ parsed, budget: parsed.budget });
+  let ebayItems = [];
+  let ebayError = null;
+  if (ebayProvider.isConfigured() && parsed.search_phrase) {
+    const ebayRes = await ebayProvider.search(parsed.search_phrase);
+    if (ebayRes.ok) ebayItems = ebayRes.items;
+    else ebayError = ebayRes.error;
+  }
+  const offersItems = [...ebayItems, ...demoOffersItems].slice(0, 10);
 
   send(res, 200, {
     parsed: {
@@ -437,8 +453,10 @@ async function handleSearch(req, res) {
     photo_pipeline,
     sources,
     offers: {
+      // Демо-слой всегда подключён; реальные предложения eBay идут первыми (source: 'eBay').
       is_demo: true,
-      note: 'Демо-предложения: примеры, не реальный каталог. Источник — data/demo-offers.json.',
+      note: 'Предложения: eBay (реальные) + демо-примеры из data/demo-offers.json.',
+      ebay_error: ebayError,
       items: offersItems,
     },
     photo_used,
