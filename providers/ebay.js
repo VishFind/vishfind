@@ -7,6 +7,10 @@
  * При любой ошибке search() возвращает { ok:false, items:[], error } — поиск продолжает
  * работать с локальными демо-предложениями и sources.
  *
+ * Circuit breaker (в памяти процесса): после EBAY_CIRCUIT_THRESHOLD последовательных
+ * ошибок запросы к eBay не выполняются в течение EBAY_CIRCUIT_COOLDOWN_SEC —
+ * отдаётся фолбэк. Успех сбрасывает счётчик.
+ *
  * Секреты — из .env: EBAY_CLIENT_ID, EBAY_CLIENT_SECRET (в браузер не попадают).
  */
 
@@ -79,18 +83,52 @@ function normalizeItems(rawList) {
  * @param {string|null} [opts.clientId]
  * @param {string|null} [opts.clientSecret]
  * @param {string} [opts.marketplace='EBAY_US']
+ * @param {number} [opts.circuitThreshold=3] порог последовательных ошибок
+ * @param {number} [opts.circuitCooldownMs=60000] пауза после открытия circuit breaker
  */
 function createEbayProvider({
   fetchImpl = globalThis.fetch,
   clientId = null,
   clientSecret = null,
   marketplace = 'EBAY_US',
+  circuitThreshold = 3,
+  circuitCooldownMs = 60_000,
 } = {}) {
   let token = null; // { value, expiresAt }
   const resultsCache = new Map(); // phrase -> { ts, items }
 
+  // Состояние circuit breaker.
+  const circuit = {
+    fails: 0,
+    openUntil: 0,
+    lastError: null,
+    lastErrorAt: null,
+    lastSuccessAt: null,
+    lastCheckAt: null,
+  };
+
   function isConfigured() {
     return !!(clientId && clientSecret);
+  }
+
+  function isCircuitOpen() {
+    return Date.now() < circuit.openUntil;
+  }
+
+  function recordFailure(error) {
+    circuit.fails += 1;
+    circuit.lastError = String(error || '');
+    circuit.lastErrorAt = Date.now();
+    circuit.lastCheckAt = Date.now();
+    if (circuit.fails >= circuitThreshold) {
+      circuit.openUntil = Date.now() + circuitCooldownMs;
+    }
+  }
+
+  function recordSuccess() {
+    circuit.fails = 0;
+    circuit.lastSuccessAt = Date.now();
+    circuit.lastCheckAt = Date.now();
   }
 
   async function getAccessToken() {
@@ -155,36 +193,81 @@ function createEbayProvider({
   }
 
   /**
-   * Поиск по фразе с кэшем результатов.
+   * Поиск по фразе с кэшем результатов и circuit breaker.
    * @param {string} phrase
    * @returns {Promise<{provider:'ebay', ok:true, items:object[], source:'eBay', cached?:boolean} |
-   *                   {provider:'ebay', ok:false, items:[], source:'eBay', error:string}>}
+   *                   {provider:'ebay', ok:false, items:[], source:'eBay', error:string, circuit_open?:boolean}>}
    */
   async function search(phrase) {
     const key = String(phrase || '').trim().toLowerCase();
     if (!key) return { provider: 'ebay', ok: false, items: [], source: 'eBay', error: 'eBay: пустая фраза' };
 
+    // Кэш результатов отдаём даже при открытом circuit breaker (данные не старше 10 минут).
     const cached = resultsCache.get(key);
     if (cached && Date.now() - cached.ts < RESULTS_TTL_MS) {
       return { provider: 'ebay', ok: true, items: cached.items, source: 'eBay', cached: true };
     }
 
+    if (isCircuitOpen()) {
+      return {
+        provider: 'ebay',
+        ok: false,
+        items: [],
+        source: 'eBay',
+        error: 'eBay временно недоступен, повторите позже',
+        circuit_open: true,
+      };
+    }
+
+    if (!isConfigured()) {
+      return { provider: 'ebay', ok: false, items: [], source: 'eBay', error: 'eBay не настроен (нет ключей в .env)' };
+    }
+
     const t = await getAccessToken();
-    if (!t.ok) return { provider: 'ebay', ok: false, items: [], source: 'eBay', error: t.error };
+    if (!t.ok) {
+      recordFailure(t.error);
+      return { provider: 'ebay', ok: false, items: [], source: 'eBay', error: t.error, circuit_open: isCircuitOpen() };
+    }
 
     const s = await searchItems(t.token, key);
-    if (!s.ok) return { provider: 'ebay', ok: false, items: [], source: 'eBay', error: s.error };
+    if (!s.ok) {
+      recordFailure(s.error);
+      return { provider: 'ebay', ok: false, items: [], source: 'eBay', error: s.error, circuit_open: isCircuitOpen() };
+    }
 
+    recordSuccess();
     resultsCache.set(key, { ts: Date.now(), items: s.items });
     return { provider: 'ebay', ok: true, items: s.items, source: 'eBay' };
+  }
+
+  /**
+   * Текущее состояние провайдера для /api/health (без секретов).
+   * @returns {object}
+   */
+  function status() {
+    return {
+      configured: isConfigured(),
+      circuit_open: isCircuitOpen(),
+      fails: circuit.fails,
+      threshold: circuitThreshold,
+      cooldown_ms: circuitCooldownMs,
+      last_success_at: circuit.lastSuccessAt,
+      last_error_at: circuit.lastErrorAt,
+      last_check_at: circuit.lastCheckAt,
+      last_error: circuit.lastError ? String(circuit.lastError).slice(0, 200) : null,
+    };
   }
 
   function clearCache() {
     token = null;
     resultsCache.clear();
+    circuit.fails = 0;
+    circuit.openUntil = 0;
+    circuit.lastError = null;
+    circuit.lastErrorAt = null;
   }
 
-  return { id: 'ebay', isConfigured, search, clearCache };
+  return { id: 'ebay', isConfigured, search, status, clearCache };
 }
 
 module.exports = {
