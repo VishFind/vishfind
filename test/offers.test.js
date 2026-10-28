@@ -11,7 +11,7 @@
  *  2) цвет из текста приоритетнее цвета фото (через mergeVisionIntoParsed);
  *  3) при отсутствии совпадений offers пустой (категория «брюки» отсутствует в демо-каталоге);
  *  4) позиции с in_stock: false не показываются;
- *  5) интеграция: /api/search возвращает offers (is_demo: true) и не ломает sources.
+ *  5) интеграция: /api/search — items=live, demo_items=демо; без live items пуст.
  */
 
 const test = require('node:test');
@@ -87,11 +87,16 @@ test('scoreOffer: +1 за категорию, бренд, цвет (состав
   assert.equal(scoreOffer(offer, { category: 'платье', brand: null, color: null, size: null }), 0);
 });
 
-test('priceInRub считает демо-курсы валют для сортировки/бюджета', () => {
-  assert.equal(findOffers.length >= 0, true);
+test('бюджет и сортировка не переводят чужие валюты выдуманным курсом', () => {
+  const { passesBudget, compareOffers } = require('../lib/offers');
+  assert.equal(passesBudget({ price: 5000, currency: 'RUB' }, 10000), true);
+  assert.equal(passesBudget({ price: 25000, currency: 'RUB' }, 10000), false);
+  // EUR не отсекаем рублёвым бюджетом через курс
+  assert.equal(passesBudget({ price: 500, currency: 'EUR' }, 10000), true);
+  const a = { score: 1, price: 100, currency: 'EUR' };
+  const b = { score: 1, price: 200, currency: 'RUB' };
+  assert.ok(compareOffers(b, a) < 0, 'RUB при равном score идёт раньше EUR');
   assert.equal(CURRENCY_RATE_RUB.RUB, 1);
-  assert.ok(CURRENCY_RATE_RUB.USD > 1);
-  assert.ok(CURRENCY_RATE_RUB.EUR > CURRENCY_RATE_RUB.USD);
 });
 
 // ---------- интеграционный smoke: контракт /api/search ----------
@@ -127,7 +132,13 @@ test.before(async () => {
   server.port = await freePort();
   server.child = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
-    env: { ...process.env, PORT: String(server.port), HOST: '127.0.0.1' },
+    env: {
+      ...process.env,
+      PORT: String(server.port),
+      HOST: '127.0.0.1',
+      WEB_SEARCH_ENABLED: 'false',
+      OLLAMA_WEB_FETCH: 'false',
+    },
     stdio: ['ignore', 'ignore', 'pipe'],
   });
   server.child.stderr.on('data', () => {
@@ -149,36 +160,48 @@ async function postSearch(query) {
   return { status: r.status, data: await r.json() };
 }
 
-test('интеграция: /api/search возвращает offers (is_demo, пустой для «брюки») и не ломает sources', async () => {
+test('интеграция: /api/search — live items пусты для «брюки», sources целы', async () => {
   const { status, data } = await postSearch('брюки шерстяные до 5000');
   assert.equal(status, 200);
 
-  // offers — поле с демо-пометкой и пустым списком (нет совпадений в каталоге)
+  // Контракт: items = только реальные; без eBay/HTML live — пустой массив.
   assert.ok(data.offers && typeof data.offers === 'object');
-  assert.equal(data.offers.is_demo, true);
+  assert.equal(data.offers.is_demo, false);
+  assert.equal(data.offers.has_live_products, false);
   assert.ok(Array.isArray(data.offers.items));
   assert.equal(data.offers.items.length, 0);
+  assert.ok(Array.isArray(data.offers.demo_items));
+  // Демо не маскируется под live.
+  assert.ok((data.offers.demo_items || []).every((o) => o && o.is_demo === true));
+  assert.ok(!(data.offers.items || []).some((o) => o && o.is_demo === true));
 
-  // sources не сломан: ссылки по-прежнему собираются
   assert.ok(Array.isArray(data.sources));
   assert.ok(data.sources.length > 0);
   assert.ok(data.parsed && data.parsed.search_phrase);
 });
 
-test('интеграция: /api/search с чёрной курткой возвращает демо-предложения', async () => {
+test('интеграция: /api/search — демо в demo_items, не в items', async () => {
   const { status, data } = await postSearch('чёрная куртка до 20000');
   assert.equal(status, 200);
 
   assert.ok(Array.isArray(data.offers.items));
-  assert.ok(data.offers.items.length > 0);
-  assert.ok(data.offers.items.every((o) => o.is_demo === true));
-  assert.ok(data.offers.items.every((o) => o.in_stock === true));
-  assert.ok(data.offers.items.every((o) => o.price <= 20000));
-  // первый по score — позиция с категорией «куртка» и/или цветом «чёрный»
-  const top = data.offers.items[0];
+  assert.equal(data.offers.items.length, 0, 'без live-интеграции items пуст');
+  assert.equal(data.offers.has_live_products, false);
+  assert.equal(data.offers.is_demo, false);
+
+  assert.ok(Array.isArray(data.offers.demo_items));
+  assert.ok(data.offers.demo_items.length > 0);
+  assert.ok(data.offers.demo_items.every((o) => o.is_demo === true));
+  assert.ok(data.offers.demo_items.every((o) => o.in_stock === true));
+  assert.ok(data.offers.demo_items.every((o) => o.price <= 20000));
+  // Демо не попадает в массив реальных.
+  const demoIds = new Set(data.offers.demo_items.map((o) => o.id).filter(Boolean));
+  assert.ok(!(data.offers.items || []).some((o) => demoIds.has(o.id)));
+
+  const top = data.offers.demo_items[0];
   assert.ok(
     top.category === 'куртка' || top.color === 'чёрный',
-    `top offer должен совпадать по категории или цвету, got ${top.category}/${top.color}`
+    `top demo должен совпадать по категории или цвету, got ${top.category}/${top.color}`
   );
 });
 

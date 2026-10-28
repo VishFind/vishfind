@@ -4,87 +4,515 @@
     "name": "Ozon",
     "type": "marketplace",
     "url_template": "https://www.ozon.ru/search/?text={q}",
+    "price_currency": "RUB",
     "price_param": "currency_price",
-    "price_format": "0;{max}",
+    "price_format": "{min};{max}",
+    "price_min_param": null,
+    "price_max_param": null,
     "verified": true,
     "price_filter_verified": false,
-    "verification_note": "Формат ?text= подтверждён редиректом (антибот 403). Фильтр currency_price=min;max есть в публичных примерах URL Ozon, живую выдачу с ценой не открыли из‑за антибота — в ссылки цену не подставляем."
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "price": "unverified",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "category_id": "unsupported",
+      "features": "in_query_only"
+    },
+    "verification_note": "Формат ?text= подтверждён. Параметр currency_price=min;max встречается в публичных URL, но живую выдачу с ценой не подтвердили (антибот) — цену в ссылки не подставляем. Цвет/размер/бренд/тип — словами в запросе."
   },
   {
     "id": "wildberries",
     "name": "Wildberries",
     "type": "marketplace",
     "url_template": "https://www.wildberries.ru/catalog/0/search.aspx?search={q}",
+    "price_currency": "RUB",
     "price_param": "priceU",
-    "price_format": "0;{max_kopecks}",
+    "price_format": "{min_kopecks};{max_kopecks}",
     "verified": true,
     "price_filter_verified": false,
-    "verification_note": "Канонический путь /catalog/0/search.aspx?search=; автоматическая проверка упирается в CAPTCHA. Цену в URL не подставляем, пока не проверим вручную."
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "price": "unverified",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "category_id": "unsupported",
+      "features": "in_query_only"
+    },
+    "verification_note": "Канонический путь /catalog/0/search.aspx?search=. Автопроверка упирается в CAPTCHA. Цену в URL не подставляем, пока не проверим вручную. Цвет/размер/бренд/тип — словами в запросе."
   },
   {
     "id": "yandex_market",
     "name": "Яндекс Маркет",
     "type": "marketplace",
     "url_template": "https://market.yandex.ru/search?text={q}",
+    "price_currency": "RUB",
     "price_param": "priceto",
     "price_format": "{max}",
+    "price_min_param": "pricefrom",
+    "price_min_format": "{min}",
+    "price_max_param": "priceto",
+    "price_max_format": "{max}",
     "verified": true,
     "price_filter_verified": true,
-    "verification_note": "Открыто в браузере 2026-10-18: поиск и priceto=15000 применяются (поле «До» = 15000)."
+    "price_min_filter_verified": true,
+    "disabled_filters": [],
+    "filter_capabilities": {
+      "price_min": "verified_browser",
+      "price_max": "verified_browser",
+      "price": "verified_browser",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "category_id": "unsupported",
+      "features": "in_query_only",
+      "multi": false
+    },
+    "verification": {
+      "price_min": {
+        "at": "2026-10-27",
+        "how": "browser_filter_value",
+        "note": "pricefrom=5000 → поле От=5000"
+      },
+      "price_max": {
+        "at": "2026-10-27",
+        "how": "browser_filter_value",
+        "note": "priceto в диапазоне с pricefrom"
+      }
+    },
+    "verification_note": "priceto подтверждён 2026-10-18. pricefrom+priceto проверены в браузере 2026-10-27: поля «От»/«До» на выдаче = 5000/15000. Цвет/размер/бренд в URL-фильтры не маппим (нет стабильных публичных ID)."
   },
   {
     "id": "avito",
     "name": "Авито",
     "type": "marketplace",
     "url_template": "https://www.avito.ru/all?q={q}",
+    "price_currency": "RUB",
     "price_param": "pmax",
     "price_format": "{max}",
+    "price_min_param": "pmin",
+    "price_min_format": "{min}",
+    "price_max_param": "pmax",
+    "price_max_format": "{max}",
     "verified": true,
     "price_filter_verified": false,
-    "verification_note": "URL ?q= отвечает 429 (лимит), значит путь живой. Старый /rossiya?q= тоже встречается. pmax не подтверждён живой страницей — цену не подставляем."
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "url_unverified",
+      "price_max": "url_unverified",
+      "price": "url_unverified",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "category_id": "unsupported",
+      "features": "in_query_only",
+      "multi": false
+    },
+    "verification_note": "Публичные URL часто содержат pmin/pmax (RUB). В код параметры заложены, но в ссылку НЕ подставляем, пока не подтвердим отображение фильтра в браузере без cookies. Описательные критерии — словами."
   },
   {
     "id": "lamoda",
     "name": "Lamoda",
     "type": "official_store",
     "url_template": "https://www.lamoda.ru/catalogsearch/result/?q={q}",
+    "price_currency": "RUB",
     "price_param": null,
     "price_format": null,
     "verified": true,
     "price_filter_verified": false,
-    "verification_note": "HTTP 200 на catalogsearch/result/?q= (2026-10-18). Фильтр цены в URL не проверяли."
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "price": "unsupported",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "category_id": "unsupported",
+      "features": "in_query_only"
+    },
+    "verification_note": "HTTP 200 на catalogsearch/result/?q=. Фильтр цены в URL не подтверждён — вручную на сайте. Описательные критерии — словами в запросе."
   },
   {
     "id": "zara",
     "name": "Zara",
     "type": "official_store",
     "url_template": "https://www.zara.com/ru/ru/search?searchTerm={q}",
+    "price_currency": "EUR",
     "price_param": null,
     "price_format": null,
     "verified": true,
     "price_filter_verified": false,
-    "verification_note": "HTTP 200 на /ru/ru/search?searchTerm= (2026-10-18)."
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "price": "unsupported",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "category_id": "unsupported",
+      "features": "in_query_only"
+    },
+    "verification_note": "HTTP 200 на /ru/ru/search?searchTerm=. Рублёвый бюджет к Zara не применяем (валюта EUR) — цену задайте вручную. Описательные критерии — словами в запросе."
   },
   {
     "id": "ebay",
     "name": "eBay",
     "type": "vintage",
     "url_template": "https://www.ebay.com/sch/i.html?_nkw={q}",
+    "price_currency": "USD",
     "price_param": null,
     "price_format": null,
     "verified": true,
     "price_filter_verified": false,
-    "verification_note": "HTTP 200 на /sch/i.html?_nkw= (2026-10-18). Для винтажа/архива; фильтр цены в URL не подключали."
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "price": "unsupported",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "category_id": "unsupported",
+      "features": "in_query_only"
+    },
+    "verification_note": "HTTP 200 на /sch/i.html?_nkw=. Рублёвый диапазон в eBay URL не подставляем (нет курса) — задайте фильтр вручную. Описательные критерии — словами в запросе."
   },
   {
     "id": "vestiaire",
     "name": "Vestiaire Collective",
     "type": "vintage",
     "url_template": "https://www.vestiairecollective.com/search/?q={q}",
+    "price_currency": "EUR",
     "price_param": null,
     "price_format": null,
     "verified": false,
     "price_filter_verified": false,
-    "verification_note": "Автопроверка вернула 403. Не показываем пользователю, пока не проверите вручную в браузере."
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "unknown",
+      "price_max": "unknown",
+      "price": "unsupported",
+      "size": "unknown",
+      "color": "unknown",
+      "brand": "unknown",
+      "category_id": "unsupported",
+      "features": "unknown"
+    },
+    "disabled_reason": "Автопроверка HTTP 403; источник намеренно скрыт (verified: false), не регрессия адаптера.",
+    "disabled_filters": [],
+    "verification_note": "Автопроверка вернула 403. Не показываем пользователю (verified: false), пока не проверите вручную в браузере."
+  },
+  {
+    "id": "brandshop",
+    "name": "BRANDSHOP",
+    "type": "official_store",
+    "url_template": "https://brandshop.ru/search/?q={q}",
+    "price_currency": "RUB",
+    "verified": true,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "Поиск search/?q=; товары/цены на витрине видны. URL-фильтр цены не подтверждён."
+  },
+  {
+    "id": "peak_concept",
+    "name": "Peak Concept",
+    "type": "official_store",
+    "url_template": "https://peakstore.ru/catalog/?q={q}",
+    "price_currency": "RUB",
+    "verified": true,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "catalog/?q= показывает релевантные товары с ценами в браузере; прямой GET сервера 403."
+  },
+  {
+    "id": "lime",
+    "name": "LIMÉ",
+    "type": "official_store",
+    "url_template": "https://limestore.com/ru_ru/",
+    "price_currency": "RUB",
+    "verified": true,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "Own-brand витрина /ru_ru/; path /search давал 404 — не используем как search."
+  },
+  {
+    "id": "maag",
+    "name": "MAAG",
+    "type": "official_store",
+    "url_template": "https://maag-fashion.com/",
+    "price_currency": "RUB",
+    "verified": true,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "Own-brand главная; buyers/ подтверждены. Без выдуманного search."
+  },
+  {
+    "id": "the_cultt",
+    "name": "THE CULTT",
+    "type": "vintage",
+    "url_template": "https://thecultt.com/",
+    "price_currency": "RUB",
+    "verified": false,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "disabled_reason": "usage_policy: соглашение запрещает автосбор контента и размещение ссылок без письменного разрешения",
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "Отключён в выдаче до письменного разрешения (polzovatelskoe-soglashenie 1.3 / 4.6.1)."
+  },
+  {
+    "id": "tsum_collect",
+    "name": "TSUM Collect",
+    "type": "vintage",
+    "url_template": "https://collect.tsum.ru/women/catalog",
+    "price_currency": "RUB",
+    "verified": true,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "Переход на каталог; HTML-карточки/цены не собираем (terms 4.6)."
+  },
+  {
+    "id": "spin4spin",
+    "name": "SPIN4SPIN",
+    "type": "vintage",
+    "url_template": "https://spin4spin.com/catalog",
+    "price_currency": "RUB",
+    "verified": true,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "Переход на каталог без HTML-сбора."
+  },
+  {
+    "id": "befree",
+    "name": "Befree",
+    "type": "official_store",
+    "url_template": "https://befree.ru/",
+    "price_currency": "RUB",
+    "verified": true,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "Собственный бренд Befree (Melon Fashion Group). Витрина befree.ru (200). Search URL как полный фильтр не подтверждён."
+  },
+  {
+    "id": "sela",
+    "name": "Sela",
+    "type": "official_store",
+    "url_template": "https://www.sela.ru/",
+    "price_currency": "RUB",
+    "verified": true,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "Собственный бренд Sela. Витрина sela.ru (200). Search URL не подтверждён отдельно."
+  },
+  {
+    "id": "zarina",
+    "name": "Zarina",
+    "type": "official_store",
+    "url_template": "https://zarina.ru/",
+    "price_currency": "RUB",
+    "verified": true,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "Собственный бренд Zarina (Melon Fashion Group). Витрина zarina.ru (200)."
+  },
+  {
+    "id": "love_republic",
+    "name": "Love Republic",
+    "type": "official_store",
+    "url_template": "https://www.loverepublic.ru/",
+    "price_currency": "RUB",
+    "verified": true,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "Собственный бренд Love Republic. Витрина loverepublic.ru (200)."
+  },
+  {
+    "id": "gloria_jeans",
+    "name": "Gloria Jeans",
+    "type": "official_store",
+    "url_template": "https://www.gloria-jeans.ru/",
+    "price_currency": "RUB",
+    "verified": true,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "Собственный бренд Gloria Jeans. Витрина gloria-jeans.ru (200)."
+  },
+  {
+    "id": "gate31",
+    "name": "GATE31",
+    "type": "official_store",
+    "url_template": "https://gate31.ru/",
+    "price_currency": "RUB",
+    "verified": true,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "Собственный бренд GATE31. Витрина gate31.ru (200)."
+  },
+  {
+    "id": "krakatau",
+    "name": "Krakatau",
+    "type": "official_store",
+    "url_template": "https://krakatau.ru/",
+    "price_currency": "RUB",
+    "verified": true,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "Собственный бренд Krakatau. krakatau.ru (200); krakatauwear.com также отвечает — в выдаче krakatau.ru."
+  },
+  {
+    "id": "ostin",
+    "name": "O'STIN",
+    "type": "official_store",
+    "url_template": "https://www.ostin.com/",
+    "price_currency": "RUB",
+    "verified": true,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "Собственный бренд O'STIN. Автоматический GET вернул 401 — не доказательство запрета; переход без HTML-сбора."
+  },
+  {
+    "id": "storeez_12",
+    "name": "12 STOREEZ",
+    "type": "official_store",
+    "url_template": "https://12storeez.com/",
+    "price_currency": "RUB",
+    "verified": true,
+    "price_filter_verified": false,
+    "price_min_filter_verified": false,
+    "filter_capabilities": {
+      "price_min": "manual",
+      "price_max": "manual",
+      "size": "in_query_only",
+      "color": "in_query_only",
+      "brand": "in_query_only",
+      "features": "in_query_only"
+    },
+    "verification_note": "Собственный бренд 12 STOREEZ. Автоматический доступ 403 — не юр. запрет; витрина без сбора каталога."
   }
 ]

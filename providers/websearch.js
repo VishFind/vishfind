@@ -1,20 +1,37 @@
 'use strict';
 
 /**
- * Провайдер веб-поиска (Tavily и т.п.).
- * По умолчанию ВЫКЛЮЧЕН. Включается только если в .env есть ключ
- * И явно задано WEB_SEARCH_ENABLED=true.
- *
- * Бесплатные квоты не считаем гарантированными; ключ не светить во frontend.
+ * Провайдер веб-поиска через Ollama Web Search (или legacy Tavily).
+ * Ключ только на сервере. Не подтверждает оригинал/цену/наличие.
  */
 
-async function search() {
-  return { provider: 'websearch', items: [], disabled: true, reason: 'веб-поиск выключен' };
+const ollamaWeb = require('../lib/ollama-web');
+
+async function search(input) {
+  if (!ollamaWeb.isEnabled()) {
+    return {
+      provider: 'websearch',
+      items: [],
+      disabled: true,
+      reason: ollamaWeb.isConfigured()
+        ? 'веб-поиск выключен (WEB_SEARCH_ENABLED=false)'
+        : 'OLLAMA_API_KEY не настроен',
+    };
+  }
+  const parsed = (input && input.parsed) || {};
+  const domains = Array.isArray(input && input.domains) ? input.domains : [];
+  const enrich = await ollamaWeb.enrichBrandSearch(parsed, domains);
+  return {
+    provider: 'websearch',
+    items: enrich.items || [],
+    used: enrich.used,
+    warnings: enrich.warnings || [],
+    reason: enrich.reason || null,
+  };
 }
 
 function isEnabled() {
-  if (String(process.env.WEB_SEARCH_ENABLED || '').toLowerCase() !== 'true') return false;
-  return !!(process.env.TAVILY_API_KEY || process.env.OLLAMA_API_KEY);
+  return ollamaWeb.isEnabled();
 }
 
 module.exports = {
@@ -23,4 +40,5 @@ module.exports = {
     return isEnabled();
   },
   search,
+  isEnabled,
 };

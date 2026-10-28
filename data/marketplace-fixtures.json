@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "note": "Эталоны генерации URL. browser_effect — ожидаемое внешнее поведение; не путать с автопроверкой. Без cookies/токенов.",
+  "fixtures": [
+    {
+      "id": "yandex_price_min_only",
+      "source_id": "yandex_market",
+      "input": { "search_phrase": "бомбер", "budget_min": 5000, "budget_max": null },
+      "expect_url_includes": ["pricefrom=5000"],
+      "expect_url_excludes": ["priceto="],
+      "expect_applied": ["price_min"],
+      "browser_effect": "Поле «От» = 5000",
+      "verified_at": "2026-10-27",
+      "verified_how": "browser_filter_value",
+      "limits": "Размер/цвет — только словами"
+    },
+    {
+      "id": "yandex_price_range",
+      "source_id": "yandex_market",
+      "input": { "search_phrase": "бомбер", "budget_min": 5000, "budget_max": 15000 },
+      "expect_url_includes": ["pricefrom=5000", "priceto=15000"],
+      "expect_applied": ["price_min", "price_max"],
+      "browser_effect": "Поля «От»/«До» = 5000/15000",
+      "verified_at": "2026-10-27",
+      "verified_how": "browser_filter_value",
+      "limits": null
+    },
+    {
+      "id": "yandex_price_max_only",
+      "source_id": "yandex_market",
+      "input": { "search_phrase": "куртка", "budget_min": null, "budget_max": 15000 },
+      "expect_url_includes": ["priceto=15000"],
+      "expect_url_excludes": ["pricefrom="],
+      "expect_applied": ["price_max"],
+      "browser_effect": "Поле «До» заполнено",
+      "verified_at": "2026-10-18",
+      "verified_how": "browser_filter_value",
+      "limits": null
+    },
+    {
+      "id": "yandex_color_in_query",
+      "source_id": "yandex_market",
+      "input": { "search_phrase": "чёрный бомбер", "colors": ["чёрный"] },
+      "expect_url_includes": ["text="],
+      "expect_applied": [],
+      "expect_in_query": ["color"],
+      "browser_effect": "цвет не как штатный фильтр URL",
+      "verified_at": null,
+      "verified_how": "url_generation",
+      "limits": "Нет стабильных ID цвета"
+    },
+    {
+      "id": "ozon_price_manual",
+      "source_id": "ozon",
+      "input": { "search_phrase": "куртка", "budget_min": 5000, "budget_max": 15000 },
+      "expect_url_excludes": ["currency_price="],
+      "expect_applied": [],
+      "expect_unsupported": ["price_min", "price_max"],
+      "browser_effect": "не подтверждено",
+      "verified_at": null,
+      "verified_how": "url_generation",
+      "limits": "антибот"
+    },
+    {
+      "id": "avito_price_not_injected",
+      "source_id": "avito",
+      "input": { "search_phrase": "бомбер", "budget_min": 5000, "budget_max": 15000 },
+      "expect_url_excludes": ["pmin=", "pmax="],
+      "expect_applied": [],
+      "browser_effect": "проверка блокировалась CAPTCHA/IP",
+      "verified_at": null,
+      "verified_how": "blocked",
+      "limits": "pmin/pmax известны по формату, в выдачу не подставляем"
+    },
+    {
+      "id": "zara_no_rub",
+      "source_id": "zara",
+      "input": { "search_phrase": "jacket", "budget_max": 15000 },
+      "expect_url_excludes": ["priceto=", "pricefrom=", "pmin="],
+      "expect_applied": [],
+      "expect_unsupported": ["price"],
+      "browser_effect": "RUB не применяется",
+      "verified_at": null,
+      "verified_how": "url_generation",
+      "limits": "валюта EUR"
+    },
+    {
+      "id": "wb_price_manual",
+      "source_id": "wildberries",
+      "input": { "search_phrase": "худи", "budget_max": 15000 },
+      "expect_url_excludes": ["priceU="],
+      "expect_applied": [],
+      "verified_at": null,
+      "verified_how": "url_generation",
+      "limits": "CAPTCHA"
+    },
+    {
+      "id": "lamoda_base",
+      "source_id": "lamoda",
+      "input": { "search_phrase": "платье" },
+      "expect_url_includes": ["catalogsearch/result"],
+      "expect_applied": [],
+      "verified_at": null,
+      "verified_how": "url_generation",
+      "limits": null
+    },
+    {
+      "id": "ebay_base",
+      "source_id": "ebay",
+      "input": { "search_phrase": "jacket", "budget_max": 100 },
+      "expect_url_includes": ["_nkw="],
+      "expect_url_excludes": ["priceto=", "pricefrom="],
+      "expect_applied": [],
+      "verified_at": null,
+      "verified_how": "url_generation",
+      "limits": "USD, RUB не подставляем"
+    }
+  ]
+}

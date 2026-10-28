@@ -4,12 +4,12 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>VishFind — поиск редкой и винтажной одежды</title>
-  <meta name="description" content="VishFind разбирает текстовый запрос или фото и открывает поиск на маркетплейсах. Цены и наличие смотрите на площадках."/>
+  <meta name="description" content="VishFind разбирает текстовый запрос или фото и готовит переходы к поиску на сторонних сайтах. Цену, наличие и подлинность проверяйте у продавца."/>
   <meta name="robots" content="index, follow"/>
   <link rel="icon" href="images/favicon.svg" type="image/svg+xml"/>
   <meta property="og:type" content="website"/>
   <meta property="og:title" content="VishFind — поиск редкой и винтажной одежды"/>
-  <meta property="og:description" content="Сервис разбора запроса и перехода к поиску на площадках. Без выдуманных цен и наличия."/>
+  <meta property="og:description" content="Разбор запроса и переходы к поиску на сторонних сайтах. Без оплаты за товары и без гарантий подлинности."/>
   <meta property="og:locale" content="ru_RU"/>
   <script>
     (function () {
@@ -34,6 +34,14 @@
     <div class="wrap glass">
       <a class="brand" href="/">VishFind</a>
       <div class="header-right">
+        <div class="header-tools" role="group" aria-label="Личные данные в браузере">
+          <button type="button" class="btn btn-ghost header-tool" id="btn-saved" aria-haspopup="dialog" aria-controls="app-sheet" aria-expanded="false">
+            Избранное<span class="header-count" id="saved-count" hidden></span>
+          </button>
+          <button type="button" class="btn btn-ghost header-tool" id="btn-history" aria-haspopup="dialog" aria-controls="app-sheet" aria-expanded="false">
+            История
+          </button>
+        </div>
         <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="site-nav">Меню</button>
         <nav class="nav" id="site-nav" aria-label="Основное">
           <a href="/" aria-current="page">Поиск</a>
@@ -46,14 +54,14 @@
   </header>
 
   <main>
-    <section class="hero reveal">
+    <section class="hero reveal" id="hero">
       <div class="wrap">
         <p class="ready" id="ready"><span class="ready-dot" id="ready-dot"></span><span id="ready-label">Проверяем сервис…</span></p>
         <p class="hero-kicker">Сервис поиска одежды</p>
         <h1>Поиск редкой и винтажной одежды</h1>
-        <p class="hero-lead" id="hero-lead">Опишите вещь текстом или приложите фото. Сервис выделит критерии (тип, цвет, размер, бюджет и др.) и откроет поиск на площадках. Цены и наличие не проверяются — их видно только на сайте магазина.</p>
+        <p class="hero-lead" id="hero-lead">Опишите вещь текстом или приложите фото. Сервис выделит критерии и подготовит переходы к поиску на сторонних сайтах. Цену, наличие и подлинность проверяйте у продавца.</p>
 
-        <div class="quick-chips" id="quick-chips" aria-label="Добавить в запрос"></div>
+        <div class="quick-chips criteria-chips-host" id="quick-chips" aria-label="Критерии поиска"></div>
 
         <div class="search-box glass" id="search">
           <div class="search-row">
@@ -64,14 +72,25 @@
               type="text"
               maxlength="300"
               autocomplete="off"
-              placeholder="Чёрная кожаная куртка, винтаж, до 15 000, размер M"
+              placeholder="Напишите название одежды, размер, цену и тд"
               aria-label="Описание вещи"
+              value=""
             />
             <div class="search-actions">
               <button type="button" class="btn btn-ghost" id="btn-photo" title="Добавить фото" hidden>Фото</button>
               <button type="button" class="btn btn-primary" id="btn-submit">Искать</button>
             </div>
           </div>
+        </div>
+
+        <div class="web-search-opt" id="web-search-opt">
+          <label class="web-search-opt-label" for="opt-web-search">
+            <input type="checkbox" id="opt-web-search" disabled />
+            <span>Дополнить поиск ссылками из интернета</span>
+          </label>
+          <p class="web-search-opt-hint" id="web-search-opt-hint">
+            При включении поисковая фраза передаётся внешнему сервису Ollama для поиска ссылок.
+          </p>
         </div>
 
         <div class="dropzone glass" id="dropzone" hidden>
@@ -84,54 +103,37 @@
           <button type="button" class="clear" id="photo-clear">Убрать</button>
         </div>
 
-        <ul class="examples" aria-label="Примеры запросов">
-          <li><button type="button" data-query="Чёрная кожаная куртка, винтаж, до 15 000, размер M">Кожаная куртка · до 15 000 · M</button></li>
-          <li><button type="button" data-query="Оливковая рабочая куртка, размер L">Рабочая куртка · L</button></li>
-          <li><button type="button" data-query="Худи Nike до 15к">Худи Nike · до 15к</button></li>
-          <li><button type="button" data-query="Шерстяное пальто серое размер 48">Пальто шерсть · 48</button></li>
+        <div class="hints-compact" id="smart-hints" aria-label="Подсказки к запросу">
+          <div id="smart-hints-body"></div>
+        </div>
+
+        <ul class="examples" id="examples" aria-label="Примеры запросов">
+          <li><button type="button" data-query="Чёрная кожаная куртка">Чёрная кожаная куртка</button></li>
+          <li><button type="button" data-query="Худи оверсайз, размер L, до 7000 ₽">Худи оверсайз · L · до 7 тыс</button></li>
+          <li><button type="button" data-query="Джинсы синие, размер 48, от 3000 до 8000 ₽">Джинсы · 48 · 3–8 тыс</button></li>
+          <li><button type="button" data-query="Кроссовки Nike или Adidas, размер 42">Кроссовки Nike/Adidas · 42</button></li>
         </ul>
 
         <p class="status" id="status" role="status" aria-live="polite" hidden></p>
       </div>
     </section>
 
-    <section class="results reveal" id="results" aria-live="polite">
+    <section class="results reveal" id="results" aria-live="polite" hidden>
       <div class="wrap">
-        <div id="results-body">
-          <p class="empty">После запроса здесь появятся ссылки на площадки и предложения.</p>
-        </div>
+        <div id="results-body"></div>
         <div id="compare-slot"></div>
       </div>
     </section>
+    <!-- #btn-new-query монтируется в js после списка ссылок; до поиска скрыт -->
+    <div class="new-query-row" id="new-query-row" hidden>
+      <button type="button" class="btn btn-ghost" id="btn-new-query" title="Очистить текущий поиск" aria-label="Новый запрос">Новый запрос</button>
+    </div>
 
-    <section class="page-block reveal" id="smart-hints" aria-labelledby="hints-title">
+    <section class="page-block ad-block reveal" id="ad-placement" aria-labelledby="ad-title">
       <div class="wrap">
-        <h2 id="hints-title">Умные подсказки</h2>
-        <div id="smart-hints-body"></div>
-      </div>
-    </section>
-
-    <section class="page-block reveal" id="search-history" aria-labelledby="history-title">
-      <div class="wrap">
-        <div class="section-head">
-          <h2 id="history-title">История запросов</h2>
-          <button type="button" class="btn btn-ghost" id="history-clear" hidden>Очистить историю</button>
-        </div>
-        <div id="search-history-body"></div>
-      </div>
-    </section>
-
-    <section class="page-block reveal" id="reco" aria-labelledby="reco-title">
-      <div class="wrap">
-        <h2 id="reco-title">Из ваших запросов</h2>
-        <div id="reco-body"></div>
-      </div>
-    </section>
-
-    <section class="page-block reveal" id="saved" aria-labelledby="saved-title">
-      <div class="wrap">
-        <h2 id="saved-title">Избранное</h2>
-        <div id="saved-body"></div>
+        <h2 id="ad-title">Рекламное размещение</h2>
+        <p class="ad-lead">Демонстрация рекламного места. Это не результаты поиска и не каталог товаров.</p>
+        <div id="ad-body"></div>
       </div>
     </section>
 
@@ -144,8 +146,8 @@
             <span>Из текста (и при необходимости фото) выделяются категория, цвет, размер, бюджет, бренд и другие признаки.</span>
           </li>
           <li>
-            <strong>Проверка критериев</strong>
-            <span>Кнопка «Что распозналось?» открывает критерии. После правки «Искать с этими критериями» снова показывает ссылки.</span>
+            <strong>Критерии и ссылки</strong>
+            <span>Чипсы над строкой поиска задают тип, цвет, размер, цену от/до и др. Проверенные фильтры уходят в URL площадки; остальное — в текст запроса или вручную на сайте магазина.</span>
           </li>
           <li>
             <strong>Переход на площадки</strong>
@@ -163,8 +165,29 @@
     </div>
   </footer>
 
+  <div id="app-sheet" class="sheet" hidden>
+    <div class="sheet-backdrop" data-sheet-close tabindex="-1" aria-hidden="true"></div>
+    <div
+      class="sheet-panel glass"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="sheet-title"
+      id="sheet-dialog"
+      tabindex="-1"
+    >
+      <div class="sheet-head">
+        <h2 id="sheet-title">Панель</h2>
+        <button type="button" class="btn btn-ghost" id="sheet-close" data-sheet-close>Закрыть</button>
+      </div>
+      <div class="sheet-toolbar" id="sheet-toolbar" hidden></div>
+      <div class="sheet-body" id="sheet-body"></div>
+    </div>
+  </div>
+
   <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden/>
   <script src="js/theme.js" defer></script>
+  <script src="js/saved-items.js" defer></script>
+  <script src="js/criteria-panel.js" defer></script>
   <script src="js/search.js" defer></script>
 </body>
 </html>

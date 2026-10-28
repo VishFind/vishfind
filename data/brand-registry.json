@@ -1,0 +1,1426 @@
+{
+  "version": 1,
+  "note": "Уникальные бренды аудитории VishFind. domain=null если не подтверждён. Магазин ≠ бренд.",
+  "brands": [
+    {
+      "id": "nike",
+      "name": "Nike",
+      "aliases": [
+        "Nike",
+        "Найк"
+      ],
+      "domain": "www.nike.com",
+      "categories": [
+        "sport",
+        "sneakers"
+      ],
+      "related": [
+        "jordan"
+      ],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "jordan",
+      "name": "Jordan",
+      "aliases": [
+        "Jordan",
+        "Air Jordan",
+        "Джордан"
+      ],
+      "domain": "www.nike.com",
+      "categories": [
+        "sport",
+        "sneakers"
+      ],
+      "related": [
+        "nike"
+      ],
+      "note": "Линейка Nike",
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "adidas",
+      "name": "adidas",
+      "aliases": [
+        "Adidas",
+        "adidas",
+        "Адидас"
+      ],
+      "domain": "www.adidas.com",
+      "categories": [
+        "sport",
+        "sneakers"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "puma",
+      "name": "Puma",
+      "aliases": [
+        "Puma",
+        "Пума"
+      ],
+      "domain": "www.puma.com",
+      "categories": [
+        "sport"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "new_balance",
+      "name": "New Balance",
+      "aliases": [
+        "New Balance",
+        "NB"
+      ],
+      "domain": "www.newbalance.com",
+      "categories": [
+        "sport",
+        "sneakers"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "asics",
+      "name": "ASICS",
+      "aliases": [
+        "ASICS",
+        "Asics",
+        "Асикс"
+      ],
+      "domain": "www.asics.com",
+      "categories": [
+        "sport",
+        "sneakers"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "reebok",
+      "name": "Reebok",
+      "aliases": [
+        "Reebok",
+        "Рибок"
+      ],
+      "domain": "www.reebok.com",
+      "categories": [
+        "sport"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "converse",
+      "name": "Converse",
+      "aliases": [
+        "Converse",
+        "Конверс"
+      ],
+      "domain": "www.converse.com",
+      "categories": [
+        "sneakers"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "vans",
+      "name": "Vans",
+      "aliases": [
+        "Vans",
+        "Ванс"
+      ],
+      "domain": "www.vans.com",
+      "categories": [
+        "sneakers"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "salomon",
+      "name": "Salomon",
+      "aliases": [
+        "Salomon",
+        "Саломон"
+      ],
+      "domain": "www.salomon.com",
+      "categories": [
+        "outdoor",
+        "sneakers"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "the_north_face",
+      "name": "The North Face",
+      "aliases": [
+        "The North Face",
+        "TNF",
+        "Норт Фейс"
+      ],
+      "domain": "www.thenorthface.com",
+      "categories": [
+        "outdoor"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "arcteryx",
+      "name": "Arc'teryx",
+      "aliases": [
+        "Arc'teryx",
+        "Arcteryx",
+        "Арктирикс"
+      ],
+      "domain": "arcteryx.com",
+      "categories": [
+        "outdoor"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "columbia",
+      "name": "Columbia",
+      "aliases": [
+        "Columbia",
+        "Коламбия"
+      ],
+      "domain": "www.columbia.com",
+      "categories": [
+        "outdoor"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "patagonia",
+      "name": "Patagonia",
+      "aliases": [
+        "Patagonia",
+        "Патагония"
+      ],
+      "domain": "www.patagonia.com",
+      "categories": [
+        "outdoor"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "on",
+      "name": "On",
+      "aliases": [
+        "On",
+        "On Running"
+      ],
+      "domain": "www.on.com",
+      "categories": [
+        "sport",
+        "sneakers"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "mizuno",
+      "name": "Mizuno",
+      "aliases": [
+        "Mizuno",
+        "Мизуно"
+      ],
+      "domain": "www.mizuno.com",
+      "categories": [
+        "sport"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "hoka",
+      "name": "Hoka",
+      "aliases": [
+        "Hoka",
+        "HOKA",
+        "Hoka One One"
+      ],
+      "domain": "www.hoka.com",
+      "categories": [
+        "sport",
+        "sneakers"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "under_armour",
+      "name": "Under Armour",
+      "aliases": [
+        "Under Armour",
+        "UA"
+      ],
+      "domain": "www.underarmour.com",
+      "categories": [
+        "sport"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "stone_island",
+      "name": "Stone Island",
+      "aliases": [
+        "Stone Island",
+        "Стоун Айленд"
+      ],
+      "domain": "www.stoneisland.com",
+      "categories": [
+        "streetwear"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "cp_company",
+      "name": "C.P. Company",
+      "aliases": [
+        "C.P. Company",
+        "CP Company",
+        "C.P.Company"
+      ],
+      "domain": "www.cpcompany.com",
+      "categories": [
+        "streetwear"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "carhartt_wip",
+      "name": "Carhartt WIP",
+      "aliases": [
+        "Carhartt WIP",
+        "Carhartt",
+        "Кархарт"
+      ],
+      "domain": "www.carhartt-wip.com",
+      "categories": [
+        "streetwear",
+        "workwear"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "dickies",
+      "name": "Dickies",
+      "aliases": [
+        "Dickies",
+        "Диккис"
+      ],
+      "domain": "www.dickies.com",
+      "categories": [
+        "workwear"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "stussy",
+      "name": "Stüssy",
+      "aliases": [
+        "Stüssy",
+        "Stussy",
+        "Стусси"
+      ],
+      "domain": "www.stussy.com",
+      "categories": [
+        "streetwear"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "supreme",
+      "name": "Supreme",
+      "aliases": [
+        "Supreme",
+        "Суприм"
+      ],
+      "domain": null,
+      "categories": [
+        "streetwear"
+      ],
+      "related": [],
+      "note": null,
+      "status": "candidate",
+      "checked_at": null,
+      "identification_basis": "Официальный домен витрины не закреплён в этой проверке"
+    },
+    {
+      "id": "palace",
+      "name": "Palace",
+      "aliases": [
+        "Palace",
+        "Palace Skateboards"
+      ],
+      "domain": "www.palaceskateboards.com",
+      "categories": [
+        "streetwear"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "bape",
+      "name": "A Bathing Ape",
+      "aliases": [
+        "A Bathing Ape",
+        "BAPE",
+        "Bape"
+      ],
+      "domain": "www.bape.com",
+      "categories": [
+        "streetwear"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "fear_of_god",
+      "name": "Fear of God",
+      "aliases": [
+        "Fear of God",
+        "FOG"
+      ],
+      "domain": "fearofgod.com",
+      "categories": [
+        "streetwear"
+      ],
+      "related": [
+        "essentials"
+      ],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "essentials",
+      "name": "Essentials",
+      "aliases": [
+        "Essentials",
+        "Fear of God Essentials"
+      ],
+      "domain": "fearofgod.com",
+      "categories": [
+        "streetwear"
+      ],
+      "related": [
+        "fear_of_god"
+      ],
+      "note": "Линейка Fear of God",
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "represent",
+      "name": "Represent",
+      "aliases": [
+        "Represent"
+      ],
+      "domain": "www.representclo.com",
+      "categories": [
+        "streetwear"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "corteiz",
+      "name": "Corteiz",
+      "aliases": [
+        "Corteiz",
+        "CRTZ"
+      ],
+      "domain": null,
+      "categories": [
+        "streetwear"
+      ],
+      "related": [],
+      "note": null,
+      "status": "candidate",
+      "checked_at": null,
+      "identification_basis": "кандидат"
+    },
+    {
+      "id": "off_white",
+      "name": "Off-White",
+      "aliases": [
+        "Off-White",
+        "Off White",
+        "Офф Вайт"
+      ],
+      "domain": "www.off---white.com",
+      "categories": [
+        "streetwear",
+        "designer"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "palm_angels",
+      "name": "Palm Angels",
+      "aliases": [
+        "Palm Angels"
+      ],
+      "domain": "www.palmangels.com",
+      "categories": [
+        "streetwear",
+        "designer"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "louis_vuitton",
+      "name": "Louis Vuitton",
+      "aliases": [
+        "Louis Vuitton",
+        "LV",
+        "Луи Виттон"
+      ],
+      "domain": "www.louisvuitton.com",
+      "categories": [
+        "luxury"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "dior",
+      "name": "Dior",
+      "aliases": [
+        "Dior",
+        "Christian Dior",
+        "Диор"
+      ],
+      "domain": "www.dior.com",
+      "categories": [
+        "luxury"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "gucci",
+      "name": "Gucci",
+      "aliases": [
+        "Gucci",
+        "Гуччи"
+      ],
+      "domain": "www.gucci.com",
+      "categories": [
+        "luxury"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "prada",
+      "name": "Prada",
+      "aliases": [
+        "Prada",
+        "Прада"
+      ],
+      "domain": "www.prada.com",
+      "categories": [
+        "luxury"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "balenciaga",
+      "name": "Balenciaga",
+      "aliases": [
+        "Balenciaga",
+        "Баленсиага"
+      ],
+      "domain": "www.balenciaga.com",
+      "categories": [
+        "luxury"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "saint_laurent",
+      "name": "Saint Laurent",
+      "aliases": [
+        "Saint Laurent",
+        "YSL",
+        "Yves Saint Laurent"
+      ],
+      "domain": "www.ysl.com",
+      "categories": [
+        "luxury"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "givenchy",
+      "name": "Givenchy",
+      "aliases": [
+        "Givenchy",
+        "Живанши"
+      ],
+      "domain": "www.givenchy.com",
+      "categories": [
+        "luxury"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "burberry",
+      "name": "Burberry",
+      "aliases": [
+        "Burberry",
+        "Барберри"
+      ],
+      "domain": "www.burberry.com",
+      "categories": [
+        "luxury"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "versace",
+      "name": "Versace",
+      "aliases": [
+        "Versace",
+        "Версаче"
+      ],
+      "domain": "www.versace.com",
+      "categories": [
+        "luxury"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "moncler",
+      "name": "Moncler",
+      "aliases": [
+        "Moncler",
+        "Монклер"
+      ],
+      "domain": "www.moncler.com",
+      "categories": [
+        "luxury"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "amiri",
+      "name": "AMIRI",
+      "aliases": [
+        "AMIRI",
+        "Amiri"
+      ],
+      "domain": "www.amiri.com",
+      "categories": [
+        "luxury",
+        "designer"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "rick_owens",
+      "name": "Rick Owens",
+      "aliases": [
+        "Rick Owens",
+        "Рик Оуэнс"
+      ],
+      "domain": "www.rickowens.eu",
+      "categories": [
+        "designer"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "maison_margiela",
+      "name": "Maison Margiela",
+      "aliases": [
+        "Maison Margiela",
+        "Margiela",
+        "MM6"
+      ],
+      "domain": "www.maisonmargiela.com",
+      "categories": [
+        "designer"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "chrome_hearts",
+      "name": "Chrome Hearts",
+      "aliases": [
+        "Chrome Hearts"
+      ],
+      "domain": null,
+      "categories": [
+        "luxury"
+      ],
+      "related": [],
+      "note": null,
+      "status": "candidate",
+      "checked_at": null,
+      "identification_basis": "кандидат"
+    },
+    {
+      "id": "acne_studios",
+      "name": "Acne Studios",
+      "aliases": [
+        "Acne Studios",
+        "Acne"
+      ],
+      "domain": "www.acnestudios.com",
+      "categories": [
+        "designer"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "alexander_mcqueen",
+      "name": "Alexander McQueen",
+      "aliases": [
+        "Alexander McQueen",
+        "McQueen"
+      ],
+      "domain": "www.alexandermcqueen.com",
+      "categories": [
+        "luxury"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "comme_des_garcons",
+      "name": "Comme des Garçons",
+      "aliases": [
+        "Comme des Garçons",
+        "Comme des Garcons",
+        "CDG"
+      ],
+      "domain": "www.comme-des-garcons.com",
+      "categories": [
+        "designer"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "kenzo",
+      "name": "Kenzo",
+      "aliases": [
+        "Kenzo",
+        "Кензо"
+      ],
+      "domain": "www.kenzo.com",
+      "categories": [
+        "designer"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "diesel",
+      "name": "Diesel",
+      "aliases": [
+        "Diesel",
+        "Дизель"
+      ],
+      "domain": "www.diesel.com",
+      "categories": [
+        "denim",
+        "casual"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "levis",
+      "name": "Levi's",
+      "aliases": [
+        "Levi's",
+        "Levis",
+        "Левайс"
+      ],
+      "domain": "www.levi.com",
+      "categories": [
+        "denim"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "lee",
+      "name": "Lee",
+      "aliases": [
+        "Lee"
+      ],
+      "domain": "www.lee.com",
+      "categories": [
+        "denim"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "wrangler",
+      "name": "Wrangler",
+      "aliases": [
+        "Wrangler"
+      ],
+      "domain": "www.wrangler.com",
+      "categories": [
+        "denim"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "polo_ralph_lauren",
+      "name": "Polo Ralph Lauren",
+      "aliases": [
+        "Polo Ralph Lauren",
+        "Ralph Lauren",
+        "Polo"
+      ],
+      "domain": "www.ralphlauren.com",
+      "categories": [
+        "casual"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "lacoste",
+      "name": "Lacoste",
+      "aliases": [
+        "Lacoste",
+        "Лакост"
+      ],
+      "domain": "www.lacoste.com",
+      "categories": [
+        "casual"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "tommy_hilfiger",
+      "name": "Tommy Hilfiger",
+      "aliases": [
+        "Tommy Hilfiger",
+        "Tommy"
+      ],
+      "domain": "www.tommy.com",
+      "categories": [
+        "casual"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "calvin_klein",
+      "name": "Calvin Klein",
+      "aliases": [
+        "Calvin Klein",
+        "CK"
+      ],
+      "domain": "www.calvinklein.com",
+      "categories": [
+        "casual"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "fred_perry",
+      "name": "Fred Perry",
+      "aliases": [
+        "Fred Perry"
+      ],
+      "domain": "www.fredperry.com",
+      "categories": [
+        "casual"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "g_star",
+      "name": "G-Star RAW",
+      "aliases": [
+        "G-Star RAW",
+        "G-Star",
+        "G Star"
+      ],
+      "domain": "www.g-star.com",
+      "categories": [
+        "denim"
+      ],
+      "related": [],
+      "note": null,
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "gosha",
+      "name": "Gosha Rubchinskiy",
+      "aliases": [
+        "Gosha Rubchinskiy",
+        "Гоша Рубчинский",
+        "Gosha"
+      ],
+      "domain": null,
+      "categories": [
+        "streetwear",
+        "ru"
+      ],
+      "related": [],
+      "note": null,
+      "status": "candidate",
+      "checked_at": null,
+      "identification_basis": "кандидат"
+    },
+    {
+      "id": "rassvet",
+      "name": "Rassvet",
+      "aliases": [
+        "Rassvet",
+        "Рассвет"
+      ],
+      "domain": null,
+      "categories": [
+        "streetwear",
+        "ru"
+      ],
+      "related": [],
+      "note": null,
+      "status": "candidate",
+      "checked_at": null,
+      "identification_basis": "кандидат"
+    },
+    {
+      "id": "volchok",
+      "name": "Volchok",
+      "aliases": [
+        "Volchok",
+        "Волчок"
+      ],
+      "domain": null,
+      "categories": [
+        "streetwear",
+        "ru"
+      ],
+      "related": [],
+      "note": null,
+      "status": "candidate",
+      "checked_at": null,
+      "identification_basis": "кандидат"
+    },
+    {
+      "id": "sputnik1985",
+      "name": "СПУТНИК1985",
+      "aliases": [
+        "СПУТНИК1985",
+        "Sputnik1985",
+        "Sputnik 1985"
+      ],
+      "domain": null,
+      "categories": [
+        "streetwear",
+        "ru"
+      ],
+      "related": [],
+      "note": null,
+      "status": "candidate",
+      "checked_at": null,
+      "identification_basis": "кандидат"
+    },
+    {
+      "id": "anteater",
+      "name": "Anteater",
+      "aliases": [
+        "Anteater"
+      ],
+      "domain": null,
+      "categories": [
+        "streetwear",
+        "ru"
+      ],
+      "related": [],
+      "note": null,
+      "status": "candidate",
+      "checked_at": null,
+      "identification_basis": "кандидат"
+    },
+    {
+      "id": "outlaw",
+      "name": "Outlaw Moscow",
+      "aliases": [
+        "Outlaw Moscow",
+        "Outlaw"
+      ],
+      "domain": null,
+      "categories": [
+        "streetwear",
+        "ru"
+      ],
+      "related": [],
+      "note": null,
+      "status": "candidate",
+      "checked_at": null,
+      "identification_basis": "кандидат"
+    },
+    {
+      "id": "zny",
+      "name": "ZNY",
+      "aliases": [
+        "ZNY"
+      ],
+      "domain": null,
+      "categories": [
+        "streetwear",
+        "ru"
+      ],
+      "related": [],
+      "note": null,
+      "status": "candidate",
+      "checked_at": null,
+      "identification_basis": "кандидат"
+    },
+    {
+      "id": "shu",
+      "name": "SHU",
+      "aliases": [
+        "SHU"
+      ],
+      "domain": null,
+      "categories": [
+        "casual",
+        "ru"
+      ],
+      "related": [],
+      "note": null,
+      "status": "candidate",
+      "checked_at": null,
+      "identification_basis": "кандидат"
+    },
+    {
+      "id": "krakatau",
+      "name": "Krakatau",
+      "aliases": [
+        "Krakatau",
+        "Кракау"
+      ],
+      "domain": "krakatau.ru",
+      "categories": [
+        "casual",
+        "own_brand"
+      ],
+      "related": [],
+      "note": "Собственный бренд магазина; storefront_region=RU",
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Собственный бренд Krakatau. krakatau.ru (200); krakatauwear.com также отвечает — в выдаче krakatau.ru.",
+      "brand_origin": "RU",
+      "storefront_region": "RU"
+    },
+    {
+      "id": "sela",
+      "name": "Sela",
+      "aliases": [
+        "Sela",
+        "Села"
+      ],
+      "domain": "www.sela.ru",
+      "categories": [
+        "casual",
+        "own_brand"
+      ],
+      "related": [],
+      "note": "Собственный бренд магазина; storefront_region=RU",
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Собственный бренд Sela. Витрина sela.ru (200). Search URL не подтверждён отдельно.",
+      "brand_origin": "RU",
+      "storefront_region": "RU"
+    },
+    {
+      "id": "befree",
+      "name": "Befree",
+      "aliases": [
+        "Befree",
+        "Бифри"
+      ],
+      "domain": "www.befree.ru",
+      "categories": [
+        "casual",
+        "own_brand"
+      ],
+      "related": [],
+      "note": "Собственный бренд магазина; storefront_region=RU",
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Собственный бренд Befree (Melon Fashion Group). Витрина befree.ru (200). Search URL как полный фильтр не подтверждён.",
+      "brand_origin": "RU",
+      "storefront_region": "RU"
+    },
+    {
+      "id": "lime",
+      "name": "LIMÉ",
+      "aliases": [
+        "LIMÉ",
+        "LIME",
+        "Lime",
+        "Лайм"
+      ],
+      "domain": "limestore.com",
+      "categories": [
+        "casual",
+        "own_brand"
+      ],
+      "related": [],
+      "note": "Собственный бренд магазина LIMÉ",
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "maag",
+      "name": "MAAG",
+      "aliases": [
+        "MAAG",
+        "Мааг"
+      ],
+      "domain": "maag-fashion.com",
+      "categories": [
+        "casual",
+        "own_brand"
+      ],
+      "related": [],
+      "note": "Собственный бренд магазина MAAG",
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Публичный официальный домен / общеизвестная идентичность бренда"
+    },
+    {
+      "id": "zarina",
+      "name": "Zarina",
+      "aliases": [
+        "Zarina",
+        "Зарина"
+      ],
+      "domain": "zarina.ru",
+      "categories": [
+        "casual",
+        "own_brand"
+      ],
+      "related": [],
+      "note": "Собственный бренд магазина; storefront_region=RU",
+      "brand_origin": "RU",
+      "storefront_region": "RU",
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Собственный бренд Zarina (Melon Fashion Group). Витрина zarina.ru (200)."
+    },
+    {
+      "id": "love_republic",
+      "name": "Love Republic",
+      "aliases": [
+        "Love Republic",
+        "Лав Репаблик"
+      ],
+      "domain": "www.loverepublic.ru",
+      "categories": [
+        "casual",
+        "own_brand"
+      ],
+      "related": [],
+      "note": "Собственный бренд магазина; storefront_region=RU",
+      "brand_origin": "RU",
+      "storefront_region": "RU",
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Собственный бренд Love Republic. Витрина loverepublic.ru (200)."
+    },
+    {
+      "id": "gloria_jeans",
+      "name": "Gloria Jeans",
+      "aliases": [
+        "Gloria Jeans",
+        "Глория Джинс",
+        "GloriaJeans"
+      ],
+      "domain": "www.gloria-jeans.ru",
+      "categories": [
+        "casual",
+        "own_brand"
+      ],
+      "related": [],
+      "note": "Собственный бренд магазина; storefront_region=RU",
+      "brand_origin": "RU",
+      "storefront_region": "RU",
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Собственный бренд Gloria Jeans. Витрина gloria-jeans.ru (200)."
+    },
+    {
+      "id": "gate31",
+      "name": "GATE31",
+      "aliases": [
+        "GATE31",
+        "Gate 31",
+        "Gate31"
+      ],
+      "domain": "gate31.ru",
+      "categories": [
+        "casual",
+        "own_brand"
+      ],
+      "related": [],
+      "note": "Собственный бренд магазина; storefront_region=RU",
+      "brand_origin": "RU",
+      "storefront_region": "RU",
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Собственный бренд GATE31. Витрина gate31.ru (200)."
+    },
+    {
+      "id": "ostin",
+      "name": "O'STIN",
+      "aliases": [
+        "O'STIN",
+        "OSTIN",
+        "Ostin",
+        "Остин"
+      ],
+      "domain": "www.ostin.com",
+      "categories": [
+        "casual",
+        "own_brand"
+      ],
+      "related": [],
+      "note": "Собственный бренд магазина; storefront_region=RU",
+      "brand_origin": "RU",
+      "storefront_region": "RU",
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Собственный бренд O'STIN. Автоматический GET вернул 401 — не доказательство запрета; переход без HTML-сбора."
+    },
+    {
+      "id": "storeez_12",
+      "name": "12 STOREEZ",
+      "aliases": [
+        "12 STOREEZ",
+        "12 Storeez",
+        "12STOREEZ"
+      ],
+      "domain": "12storeez.com",
+      "categories": [
+        "casual",
+        "own_brand"
+      ],
+      "related": [],
+      "note": "Собственный бренд магазина; storefront_region=RU",
+      "brand_origin": "RU",
+      "storefront_region": "RU",
+      "status": "identity_checked",
+      "checked_at": "2026-10-27",
+      "identification_basis": "Собственный бренд 12 STOREEZ. Автоматический доступ 403 — не юр. запрет; витрина без сбора каталога."
+    }
+  ]
+}

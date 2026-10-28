@@ -14,9 +14,21 @@ const path = require('path');
 const config = require('./lib/config');
 const { createLogger } = require('./lib/logger');
 const { parseQuery, buildSearchPhrase } = require('./lib/parse-query');
+const {
+  mergeCriteria,
+  publicCriteria,
+  normalizeCriteria,
+} = require('./lib/criteria-model');
 const { createRateLimiter } = require('./lib/rate-limit');
 const providers = require('./providers');
 const offersApi = require('./lib/offers');
+const {
+  selectSources,
+  adaptersForSelection,
+  registrySummary,
+} = require('./lib/source-registry');
+const ollamaWeb = require('./lib/ollama-web');
+const fxRates = require('./lib/fx-rates');
 // eBay Browse API (реальные предложения) — опционально, только если ключи есть в .env.
 const { createEbayProvider } = require('./providers/ebay');
 const ebayProvider = createEbayProvider({
@@ -44,6 +56,9 @@ const OLLAMA_TIMEOUT_MS = config.ollama.timeoutMs;
 const PHOTO_TIMEOUT_MS = config.ollama.photoTimeoutMs;
 /** schema = один проход JSON Schema; twopass = свободное описание → JSON; auto = schema, при скудном результате twopass */
 const PHOTO_PIPELINE = config.ollama.pipeline;
+/** Одновременные разборы фото (тяжёлая операция). */
+const PHOTO_CONCURRENCY = Math.max(1, Number(config.ollama.photoConcurrency || 1) || 1);
+let photoInFlight = 0;
 
 /** JSON Schema для structured outputs Ollama */
 const PHOTO_FORMAT = {
@@ -108,8 +123,10 @@ function loadJson(rel, fallback) {
 }
 
 let MOVIES = loadJson('movies.json', []);
-let BRANDS = loadJson('data/brands.json', []);
+const brandsApi = require('./lib/brands');
+let BRANDS = brandsApi.aliasList();
 let SOURCES = loadJson('data/sources.json', []);
+const productHtml = require('./lib/product-html');
 
 const NOTE =
   'Это переходы на поиск площадок, цены и наличие не проверялись';
@@ -185,6 +202,8 @@ function enforceRateLimit(req, res) {
 function emptyParsed(raw) {
   return {
     budget: null,
+    budget_min: null,
+    budget_max: null,
     size: null,
     color: null,
     category: null,
@@ -193,6 +212,95 @@ function emptyParsed(raw) {
     rest: null,
     search_phrase: null,
     raw_query: raw || '',
+  };
+}
+
+function parsePriceAttr(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n);
+}
+
+function applyPriceAttributes(out, attrs, overwrite) {
+  const hasMin = Object.prototype.hasOwnProperty.call(attrs, 'budget_min')
+    || Object.prototype.hasOwnProperty.call(attrs, 'price_min')
+    || Object.prototype.hasOwnProperty.call(attrs, 'min_price_rub');
+  const hasMax = Object.prototype.hasOwnProperty.call(attrs, 'budget_max')
+    || Object.prototype.hasOwnProperty.call(attrs, 'budget')
+    || Object.prototype.hasOwnProperty.call(attrs, 'max_price_rub')
+    || Object.prototype.hasOwnProperty.call(attrs, 'price_max');
+  if (hasMin) {
+    const raw = attrs.budget_min != null ? attrs.budget_min
+      : attrs.price_min != null ? attrs.price_min
+        : attrs.min_price_rub;
+    // overwrite: только непустые значения; сброс — через clear_attributes
+    if (overwrite) {
+      if (raw != null && raw !== '') out.budget_min = parsePriceAttr(raw);
+    } else if (out.budget_min == null) {
+      out.budget_min = parsePriceAttr(raw);
+    }
+  }
+  if (hasMax) {
+    const raw = attrs.budget_max != null ? attrs.budget_max
+      : attrs.budget != null ? attrs.budget
+        : attrs.price_max != null ? attrs.price_max
+          : attrs.max_price_rub;
+    if (overwrite) {
+      if (raw != null && raw !== '') {
+        out.budget_max = parsePriceAttr(raw);
+        out.budget = out.budget_max;
+      }
+    } else if (out.budget_max == null && out.budget == null) {
+      out.budget_max = parsePriceAttr(raw);
+      out.budget = out.budget_max;
+    }
+  } else if (overwrite || out.budget == null) {
+    const b = attrs.budget != null ? attrs.budget : attrs.max_price_rub;
+    if (b != null && b !== '') {
+      out.budget = parsePriceAttr(b);
+      if (out.budget_max == null) out.budget_max = out.budget;
+    }
+  }
+  if (out.budget == null && out.budget_max != null) out.budget = out.budget_max;
+  if (out.budget_max == null && out.budget != null) out.budget_max = out.budget;
+}
+
+function applyClearAttributes(parsed, clearList) {
+  if (!Array.isArray(clearList) || !clearList.length) return parsed;
+  const out = { ...parsed };
+  for (const key of clearList) {
+    const k = String(key || '');
+    if (k === 'budget' || k === 'budget_min' || k === 'budget_max' || k === 'price') {
+      out.budget = null;
+      out.budget_min = null;
+      out.budget_max = null;
+    } else if (Object.prototype.hasOwnProperty.call(out, k)) {
+      out[k] = null;
+    }
+  }
+  out.search_phrase = buildSearchPhrase(out, out.movie) || out.search_phrase;
+  return out;
+}
+
+function publicParsed(parsed) {
+  const pub = publicCriteria(parsed) || {};
+  return {
+    budget: pub.budget,
+    budget_min: pub.budget_min,
+    budget_max: pub.budget_max,
+    size: pub.size,
+    color: pub.color,
+    category: pub.category,
+    brand: pub.brand,
+    sizes: pub.sizes || [],
+    colors: pub.colors || [],
+    categories: pub.categories || [],
+    brands: pub.brands || [],
+    movie: pub.movie,
+    rest: pub.rest,
+    search_phrase: pub.search_phrase,
+    warnings: pub.warnings || [],
   };
 }
 
@@ -235,12 +343,9 @@ function applyAttributes(parsed, attrs) {
   if (out.color == null) out.color = cleanAttr(attrs.color);
   if (out.brand == null) out.brand = cleanAttr(attrs.brand || attrs.visible_brand || attrs.brand_guess);
   if (out.size == null) out.size = cleanAttr(attrs.size);
-  if (out.budget == null) {
-    const b = attrs.budget != null ? attrs.budget : attrs.max_price_rub;
-    const n = Number(b);
-    out.budget = Number.isFinite(n) && n > 0 ? Math.round(n) : null;
-  }
+  applyPriceAttributes(out, attrs, false);
   if (out.rest == null && attrs.description) out.rest = cleanAttr(attrs.description);
+  if (out.rest == null && attrs.rest) out.rest = cleanAttr(attrs.rest);
   const movie = out.movie;
   out.search_phrase = buildSearchPhrase(out, movie) || out.search_phrase;
   return out;
@@ -321,48 +426,55 @@ async function handleSearch(req, res) {
           ? 'Фото или запрос слишком большие'
           : 'Запрос слишком большой'
         : 'Некорректный JSON',
+      error_kind: e.status === 413 ? 'payload_too_large' : 'invalid_json',
     });
   }
 
-  const query = typeof body.query === 'string' ? body.query.trim() : '';
-  const image =
-    typeof body.image === 'string' && body.image
-      ? body.image.replace(/^data:image\/[\w+.-]+;base64,/, '')
-      : '';
-  const attrs = body.attributes && typeof body.attributes === 'object' ? body.attributes : null;
-  const attrsOnly = !!(attrs && body.attributes_priority === true);
-
-  if (!query && !image && !attrs) {
-    return send(res, 400, {
-      error: AI_ENABLED
-        ? 'Введите текстовый запрос или приложите фото'
-        : 'Введите текстовый запрос',
+  // Типы / длина / пустота — до parseQuery, Ollama и внешних API.
+  const { validateSearchBody } = require('./lib/search-request');
+  const checked = validateSearchBody(body, { aiEnabled: AI_ENABLED });
+  if (!checked.ok) {
+    return send(res, checked.status, {
+      error: checked.error,
+      error_kind: checked.error_kind,
     });
   }
-  if (query.length > 300) {
-    return send(res, 400, { error: 'Запрос слишком длинный (максимум 300 символов)' });
-  }
+  const query = checked.value.query;
+  const image = checked.value.image;
+  const attrs = checked.value.attrs;
+  const attrsOnly = checked.value.attrsOnly;
+  const clearAttributes = checked.value.clearAttributes;
+  const userWantsWeb = checked.value.webSearch;
 
-  let parsed = query && !attrsOnly ? parseQuery(query, { movies: MOVIES, brands: BRANDS }) : emptyParsed(query);
-  // attributes: по умолчанию заполняют только пустые поля (текст важнее).
-  // attributes_priority=true — ручная правка / «Искать снова» (поля из attributes главнее).
-  if (attrsOnly) {
+  // Единая модель: текст → merge с attributes / clear_attributes → publicCriteria.
+  let parsed = query ? parseQuery(query, { movies: MOVIES, brands: BRANDS }) : emptyParsed(query);
+  if (attrs || clearAttributes.length) {
+    const merged = mergeCriteria(parsed, attrs || {}, {
+      priority: attrsOnly,
+      clear: clearAttributes,
+    });
     parsed = {
-      ...emptyParsed(query),
-      category: cleanAttr(attrs.category),
-      color: cleanAttr(attrs.color),
-      brand: cleanAttr(attrs.brand || attrs.visible_brand),
-      size: cleanAttr(attrs.size),
-      budget: (() => {
-        const n = Number(attrs.budget != null ? attrs.budget : attrs.max_price_rub);
-        return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
-      })(),
-      rest: cleanAttr(attrs.rest || attrs.description),
-      movie: null,
+      ...parsed,
+      ...merged,
+      category: merged.category,
+      color: merged.color,
+      size: merged.size,
+      brand: merged.brand,
+      categories: merged.categories,
+      colors: merged.colors,
+      sizes: merged.sizes,
+      brands: merged.brands,
+      budget: merged.budget,
+      budget_min: merged.budget_min,
+      budget_max: merged.budget_max,
+      rest: merged.rest,
+      search_phrase: merged.search_phrase,
+      warnings: merged.warnings,
     };
-    parsed.search_phrase = buildSearchPhrase(parsed, null);
   } else {
-    parsed = applyAttributes(parsed, attrs);
+    const n = normalizeCriteria(parsed);
+    const parseWarnings = Array.isArray(parsed.warnings) ? parsed.warnings.slice() : [];
+    parsed = { ...parsed, ...n, warnings: parseWarnings };
   }
   let photo_used = false;
   let photo_attrs = null;
@@ -376,14 +488,25 @@ async function handleSearch(req, res) {
         ai_enabled: false,
       });
     }
+    if (photoInFlight >= PHOTO_CONCURRENCY) {
+      return send(res, 503, {
+        error:
+          'Сейчас слишком много разборов фото. Подождите немного или выполните текстовый поиск без фото.',
+        overloaded: true,
+        retry_after_sec: 5,
+      });
+    }
     const movieObj = parsed.movie
       ? MOVIES.find((m) => m.title === parsed.movie.title) || null
       : findMovieLegacy(query);
+    photoInFlight += 1;
     try {
       const analysis = await analyze(query, image, movieObj);
       photo_attrs = publicPhotoAttrs(analysis);
       photo_pipeline = analysis.pipeline || null;
       parsed = mergeVisionIntoParsed(parsed, analysis);
+      const n = normalizeCriteria(parsed);
+      parsed = { ...parsed, ...n };
       photo_used = true;
     } catch (e) {
       logger.warn('Фотоанализ не удался', { error: e.message });
@@ -394,93 +517,347 @@ async function handleSearch(req, res) {
         msg =
           'Ollama не запущена. Установите Ollama, выполните ollama pull qwen3-vl:4b-instruct, запустите Ollama и повторите.';
       }
-      // Честно: не подменяем неудачный анализ «успехом»
-      const friendly =
-        /JSON|формат|разобрать|распозна|Failed to load image|400|нет одежд/i.test(msg) ||
-        e.name === 'TimeoutError';
-      return send(res, 502, {
-        error: friendly
-          ? /нет одежд/i.test(msg)
-            ? 'На фото не видно одежды. Загрузите фото вещи или опишите словами.'
-            : 'Не удалось разобрать фото. Опишите вещь словами.'
-          : msg,
-        detail: msg,
-        photo_used: false,
-        keep_text_input: true,
-        note: NOTE,
-      });
+      // Не подмешиваем частичный/чужой результат vision: photo_* остаются пустыми.
+      photo_used = false;
+      photo_attrs = null;
+      photo_pipeline = null;
+
+      // Самостоятельная основа (без NLP-эвристик): уже есть структурированные
+      // критерии из текста/чипсов (категория|бренд|цвет|размер|бюджет) и phrase.
+      // Один «хвост» rest вроде «такое» после «найди такое» — не основание.
+      const hasStructured =
+        !!(parsed.category || (parsed.categories && parsed.categories.length))
+        || !!(parsed.brand || (parsed.brands && parsed.brands.length))
+        || !!(parsed.color || (parsed.colors && parsed.colors.length))
+        || !!(parsed.size || (parsed.sizes && parsed.sizes.length))
+        || parsed.budget != null
+        || parsed.budget_min != null
+        || parsed.budget_max != null;
+      const hasStandaloneBasis = hasStructured && !!(parsed && parsed.search_phrase);
+      if (hasStandaloneBasis) {
+        const warn =
+          'Фото не удалось разобрать. Результаты сформированы только по тексту и выбранным критериям.';
+        if (!Array.isArray(parsed.warnings)) parsed.warnings = [];
+        if (!parsed.warnings.includes(warn)) parsed.warnings.push(warn);
+        // Продолжаем выдачу links только по pre-photo parsed.
+      } else {
+        const friendly =
+          /JSON|формат|разобрать|распозна|Failed to load image|400|нет одежд/i.test(msg) ||
+          e.name === 'TimeoutError';
+        return send(res, 502, {
+          error: friendly
+            ? /нет одежд/i.test(msg)
+              ? 'На фото не видно одежды. Загрузите фото вещи или опишите словами.'
+              : 'Не удалось разобрать фото. Опишите вещь словами.'
+            : msg,
+          detail: msg,
+          photo_used: false,
+          keep_text_input: true,
+          note: NOTE,
+        });
+      }
+    } finally {
+      photoInFlight = Math.max(0, photoInFlight - 1);
     }
   }
 
   if (!parsed.search_phrase) {
+    const hasText = !!(query && query.trim());
     return send(res, 422, {
-      error:
-        'Не удалось распознать признаки в запросе. Введите осмысленный поисковый запрос: категория, цвет, размер или бренд, например «чёрная куртка до 15 000, размер M».',
-      parsed: {
-        budget: parsed.budget,
-        size: parsed.size,
-        color: parsed.color,
-        category: parsed.category,
-        brand: parsed.brand,
-        movie: parsed.movie,
-        rest: parsed.rest,
-        search_phrase: parsed.search_phrase,
-      },
+      error: hasText
+        ? 'В запросе нет распознаваемых признаков одежды (тип, цвет, размер, бренд). Пример: «куртка» или «чёрная куртка размер M». Цвет, размер и бюджет не обязательны.'
+        : 'Введите текстовый запрос или заполните критерии над строкой поиска.',
+      error_kind: hasText ? 'unrecognized_query' : 'empty_query',
+      parsed: publicParsed(parsed),
       keep_text_input: true,
       note: NOTE,
     });
   }
 
-  const [linksResult] = await providers.runEnabled({ parsed, sources: SOURCES });
-  const sources = (linksResult && linksResult.items) || [];
+  // Выбор источников под запрос (не все кандидаты сразу).
+  // Без обхода через «все verified:true» — та же политика, что selectSources.
+  const selection = selectSources(parsed, { maxSources: 8 });
+  const adapterSources = adaptersForSelection(selection.selected, SOURCES);
 
-  // Предложения: реальные из eBay (если настроен) + локальные демо.
-  // Ошибки eBay не ломают поиск: возвращаются демо-предложения и sources.
-  const demoOffersItems = offersApi.findOffers({ parsed, budget: parsed.budget });
+  let sources = [];
+  try {
+    const linksResult = await providers.links.search({ parsed, sources: adapterSources });
+    sources = (linksResult && linksResult.items) || [];
+  } catch (e) {
+    logger.warn('links provider failed', { error: e.message });
+    sources = [];
+  }
+
+  // Официальный сайт бренда без найденного товара — отдельная пометка.
+  const sourcePolicyEarly = require('./lib/source-policy');
+  const seenSourceIds = new Set(sources.map((s) => s.id));
+  const seenSourceDomains = new Set();
+  for (const s of sources) {
+    try {
+      if (s.url) seenSourceDomains.add(new URL(s.url).hostname.replace(/^www\./, '').toLowerCase());
+    } catch (_) { /* ignore */ }
+  }
+  for (const extra of selection.officialExtras || []) {
+    if (!extra.domain) continue;
+    if (sourcePolicyEarly.isOutboundRestrictedHost(extra.domain)) continue;
+    if (
+      extra.connection_status === 'temporarily_limited'
+      || extra.connection_status === 'disabled'
+    ) {
+      continue;
+    }
+    if (seenSourceIds.has(extra.id)) continue;
+    const extraHost = String(extra.domain).replace(/^www\./, '').toLowerCase();
+    if (seenSourceDomains.has(extraHost)) continue;
+    const url = 'https://' + String(extra.domain).replace(/^https?:\/\//, '');
+    sources.push({
+      id: extra.id,
+      name: extra.name,
+      type: 'official_store',
+      type_label: 'официальный магазин',
+      url,
+      result_kind: 'search_link',
+      link_kind: 'official_store_entry',
+      trust_level: extra.trust_level || 'official_store',
+      own_brand: !!extra.own_brand,
+      display_group: extra.display_group || 'official',
+      display_group_order: extra.display_group_order || 1,
+      display_group_label: extra.display_group_label || 'Официальный магазин бренда',
+      price: null,
+      price_note: 'Цена на сайте',
+      search_phrase_used: parsed.search_phrase || null,
+      phrase_accepts_query: false,
+      filter_details: [
+        {
+          kind: 'info',
+          field: 'official',
+          text: 'Ссылка на официальный сайт бренда — не найденный товар. Не партнёрство VishFind.',
+        },
+        {
+          kind: 'info',
+          field: 'transfer',
+          text: 'Открывается каталог. Запрос и критерии автоматически не передаются.',
+        },
+      ],
+      applied_filters: [],
+      in_query_filters: [],
+      unsupported_filters: [],
+      verification_level: 'base_url_only',
+    });
+    seenSourceIds.add(extra.id);
+    seenSourceDomains.add(extraHost);
+  }
+
+  // Единый порядок групп на сервере (клиент не переставляет маркетплейсы выше ресейла).
+  const groupRank = (s) => {
+    const o = Number(s.display_group_order);
+    if (Number.isFinite(o) && o > 0) return o;
+    if (s.display_group === 'official' || s.link_kind === 'official_store_entry') return 1;
+    if (s.display_group === 'reseller') return 2;
+    if (s.display_group === 'other') return 3;
+    if (s.display_group === 'marketplace_tail' || ['ozon', 'wildberries', 'yandex_market'].includes(s.id)) return 4;
+    return 3;
+  };
+  const tailOrder = { ozon: 0, wildberries: 1, yandex_market: 2 };
+  sources.sort((a, b) => {
+    const ga = groupRank(a);
+    const gb = groupRank(b);
+    if (ga !== gb) return ga - gb;
+    if (ga === 4) return (tailOrder[a.id] ?? 9) - (tailOrder[b.id] ?? 9);
+    return 0;
+  });
+
+  const responseWarnings = Array.isArray(parsed.warnings) ? parsed.warnings.slice() : [];
+
+  // Веб-поиск Ollama: только серверное разрешение + явный opt-in (уже проверен тип).
+  // Не включается из-за одного ключа; не обходит source-policy; не включает web_fetch.
+  let webItems = [];
+  let webMeta = { used: false, reason: null };
+  if (!userWantsWeb) {
+    webMeta = { used: false, reason: 'user_opt_out' };
+  } else if (!ollamaWeb.isEnabled()) {
+    webMeta = { used: false, reason: 'disabled' };
+  } else if (!(parsed.brand || (parsed.brands && parsed.brands.length))) {
+    webMeta = { used: false, reason: 'no_brand' };
+  } else {
+    try {
+      const domains = selection.selected
+        .filter((s) => s.type === 'brand_official' && s.domain)
+        .filter((s) => {
+          try {
+            const sp = require('./lib/source-policy');
+            return sp.cap(s, 'outbound_link') !== 'restricted';
+          } catch (_) {
+            return true;
+          }
+        })
+        .map((s) => s.domain);
+      // В Ollama — только поисковая фраза/бренд, без фото, истории и избранного.
+      const enrich = await ollamaWeb.enrichBrandSearch(
+        {
+          brand: parsed.brand || null,
+          brands: Array.isArray(parsed.brands) ? parsed.brands.slice(0, 3) : [],
+          search_phrase: parsed.search_phrase || '',
+        },
+        domains
+      );
+      webMeta = { used: enrich.used, reason: enrich.reason || null };
+      // Повторный фильтр перед выдачей (кэш / смена политики).
+      const sp = require('./lib/source-policy');
+      webItems = (enrich.items || []).filter((it) => {
+        if (!it || !it.url) return false;
+        if (sp.isOutboundRestrictedHost(sp.hostnameFromUrl(it.url))) return false;
+        if (!sp.webSearchDisplayAllowedForUrl(it.url)) return false;
+        // Не дублировать уже показанный официальный/выбранный домен в web-блоке.
+        try {
+          const host = new URL(it.url).hostname.replace(/^www\./, '').toLowerCase();
+          if (seenSourceDomains.has(host)) return false;
+        } catch (_) { /* keep */ }
+        return true;
+      });
+      for (const w of enrich.warnings || []) responseWarnings.push(w);
+    } catch (e) {
+      logger.warn('ollama web enrich failed', { error: e.message });
+      responseWarnings.push('Веб-поиск не удался — показаны обычные переходы.');
+      webMeta = { used: false, reason: 'error' };
+    }
+  }
+
+  // Предложения: eBay API + попытка публичных витрин (Peak/CULTT) + демо.
+  const budgetForOffers =
+    parsed.budget_max != null ? parsed.budget_max : parsed.budget;
+  const demoOffersItems = offersApi.findOffers({ parsed, budget: budgetForOffers });
   let ebayItems = [];
   let ebayError = null;
   if (ebayProvider.isConfigured() && parsed.search_phrase) {
-    const ebayRes = await ebayProvider.search(parsed.search_phrase);
-    if (ebayRes.ok) {
-      ebayItems = ebayRes.items;
-    } else {
-      // Техническая причина — только в лог; клиенту — дружелюбное сообщение.
-      logger.warn('eBay search failed', {
-        error: ebayRes.error,
-        circuit_open: !!ebayRes.circuit_open,
-      });
-      ebayError = ebayRes.circuit_open
-        ? 'eBay временно недоступен. Показаны демо-предложения.'
-        : 'eBay не ответил. Показаны демо-предложения.';
+    try {
+      const ebayRes = await ebayProvider.search(parsed.search_phrase);
+      if (ebayRes.ok) {
+        ebayItems = (ebayRes.items || []).map((o) => ({
+          ...o,
+          result_kind: 'product',
+          trust_level: 'reseller_described',
+          data_origin: 'ebay_browse_api',
+        }));
+      } else {
+        logger.warn('eBay search failed', {
+          error: ebayRes.error,
+          circuit_open: !!ebayRes.circuit_open,
+        });
+        ebayError = ebayRes.circuit_open
+          ? 'eBay временно недоступен. Показаны демо-предложения.'
+          : 'eBay не ответил. Показаны демо-предложения.';
+      }
+    } catch (e) {
+      logger.warn('eBay search exception', { error: e.message });
+      ebayError = 'eBay не ответил. Показаны демо-предложения.';
     }
   }
-  const offersItems = [...ebayItems, ...demoOffersItems].slice(0, 10);
+
+  // Точечные product-попытки только при usage_policy.html_product_fetch=documented_allowed.
+  // Ограниченные источники (CULTT/TSUM и др.) не вызываются и не обходятся через Ollama.
+  const sourcePolicy = require('./lib/source-policy');
+  const htmlProducts = [];
+  const productNotes = [];
+  const productTargets = selection.selected
+    .filter((s) => s.product_search_url && s.product_parse)
+    .filter((s) => sourcePolicy.htmlProductFetchAllowed(s))
+    .slice(0, 2);
+  await Promise.all(
+    productTargets.map(async (s) => {
+      try {
+        const res = await productHtml.searchProducts(
+          {
+            id: s.id,
+            name: s.name,
+            search_url_template: s.product_search_url,
+            parse: s.product_parse,
+            trust_level: s.trust_level,
+            allow_ollama_fetch: sourcePolicy.ollamaFetchAllowedForSource(s),
+          },
+          parsed.search_phrase
+        );
+        if (res.ok && res.items && res.items.length) {
+          const wanted = (selection.wantedBrands || []).map((b) =>
+            String(b).toLowerCase()
+          );
+          const filtered = wanted.length
+            ? res.items.filter((it) => {
+                const hay = `${it.brand || ''} ${it.title || ''}`.toLowerCase();
+                return wanted.some((w) => hay.includes(w));
+              })
+            : res.items;
+          if (filtered.length) {
+            htmlProducts.push(...filtered.slice(0, 4));
+          } else {
+            productNotes.push({
+              id: s.id,
+              note: 'Карточки источника без совпадения бренда запроса — не показаны.',
+            });
+          }
+        } else if (res.error || res.note) {
+          productNotes.push({
+            id: s.id,
+            error: res.error || null,
+            note: res.note || null,
+          });
+        }
+      } catch (e) {
+        productNotes.push({ id: s.id, error: 'exception' });
+        logger.warn('product html failed', { id: s.id, error: e.message });
+      }
+    })
+  );
+
+  const realProductItems = [...htmlProducts, ...ebayItems].slice(0, 12);
+  // Демо не смешиваем с реальными offers (отдельное поле для возможной рекламы).
+
+  // FX: без live-источника — только статус; исходный бюджет не меняем.
+  const fx = fxRates.publicStatus();
+  const budget_display = {
+    original: {
+      min: parsed.budget_min != null ? parsed.budget_min : null,
+      max: parsed.budget_max != null ? parsed.budget_max : parsed.budget,
+      currency: 'RUB',
+    },
+    conversion: null,
+    fx,
+  };
 
   send(res, 200, {
-    parsed: {
-      budget: parsed.budget,
-      size: parsed.size,
-      color: parsed.color,
-      category: parsed.category,
-      brand: parsed.brand,
-      movie: parsed.movie,
-      rest: parsed.rest,
-      search_phrase: parsed.search_phrase,
-    },
+    parsed: publicParsed(parsed),
     photo: photo_attrs,
     photo_pipeline,
     sources,
-    offers: {
-      // Демо-слой всегда подключён; реальные предложения eBay идут первыми (source: 'eBay').
-      is_demo: true,
-      note: 'Предложения: eBay (реальные) + демо-примеры из data/demo-offers.json.',
-      ebay_error: ebayError,
-      items: offersItems,
+    web_results: webItems,
+    web_search: {
+      ...ollamaWeb.publicStatus(),
+      ...webMeta,
+      user_requested: userWantsWeb,
     },
+    offers: {
+      is_demo: false,
+      has_live_products: realProductItems.length > 0,
+      note: realProductItems.length
+        ? 'Карточки с подтверждённым происхождением данных. Search_link — отдельно.'
+        : 'Живых карточек товара нет — показаны поисковые переходы. Цену смотрите на сайте.',
+      ebay_error: ebayError,
+      product_fetch_notes: productNotes,
+      items: realProductItems,
+      demo_items: demoOffersItems.slice(0, 8),
+    },
+    source_selection: {
+      wanted_brands: selection.wantedBrands,
+      selected_ids: selection.selected.map((s) => s.id),
+      registry: selection.registry_stats,
+      brands_registry: brandsApi.summary(),
+    },
+    budget_display,
+    warnings: responseWarnings,
     photo_used,
     prices: null,
     prices_note:
-      'Цены товаров не показываем: мы не парсим площадки и не выдумываем цифры. Смотрите цену после перехода.',
+      'Отсутствующая цена не выдумывается. У поисковых переходов — «Цена на сайте».',
     note: NOTE,
     providers: providers.listProviders(),
   });
@@ -1076,13 +1453,14 @@ async function handleHealth(res) {
     uptime_sec: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
     ai_enabled: AI_ENABLED,
-    web_search: providers.websearch.enabled
-      ? TAVILY_KEY
-        ? 'tavily'
-        : OLLAMA_KEY
-          ? 'ollama'
-          : null
-      : null,
+    text_search_ok: true,
+    recognition_configured: AI_ENABLED,
+    photo_busy: photoInFlight > 0,
+    web_search: ollamaWeb.publicStatus(),
+    fx: fxRates.publicStatus(),
+    source_registry: registrySummary(),
+    brands_registry: brandsApi.summary(),
+    ollama_api_key_configured: ollamaWeb.isConfigured(),
     providers: providers.listProviders(),
     ebay: {
       configured: ebayStatus.configured,
@@ -1094,8 +1472,8 @@ async function handleHealth(res) {
       last_check_at: ebayStatus.last_check_at,
     },
     message: AI_ENABLED
-      ? 'AI включён (локальная разработка). Работает текстовый поиск /api/search.'
-      : 'AI выключен. Работает текстовый поиск /api/search.',
+      ? 'AI включён (локальная разработка). Текстовый поиск /api/search работает независимо от Ollama.'
+      : 'AI выключен. Текстовый поиск /api/search работает.',
   };
   send(res, 200, payload);
 }

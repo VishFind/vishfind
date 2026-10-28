@@ -1,0 +1,763 @@
+{
+  "version": 1,
+  "note": "Корпус качества текстового разбора. Ожидания заданы вручную. Полный прогон — отдельная приёмка, не при каждом изменении.",
+  "groups": {
+    "short": [
+      {
+        "q": "куртка",
+        "expect": {
+          "category": "куртка"
+        }
+      },
+      {
+        "q": "худи",
+        "expect": {
+          "category": "худи"
+        }
+      },
+      {
+        "q": "джинсы",
+        "expect": {
+          "category": "джинсы"
+        }
+      },
+      {
+        "q": "платье",
+        "expect": {
+          "category": "платье"
+        }
+      },
+      {
+        "q": "кроссовки",
+        "expect": {
+          "category": "кроссовки"
+        }
+      },
+      {
+        "q": "бомбер",
+        "expect": {
+          "category": "бомбер"
+        }
+      },
+      {
+        "q": "пальто",
+        "expect": {
+          "category": "пальто"
+        }
+      },
+      {
+        "q": "свитшот",
+        "expect": {
+          "category": "свитшот"
+        }
+      },
+      {
+        "q": "рубашка",
+        "expect": {
+          "category": "рубашка"
+        }
+      },
+      {
+        "q": "брюки",
+        "expect": {
+          "category": "брюки"
+        }
+      },
+      {
+        "q": "чёрная куртка",
+        "expect": {
+          "category": "куртка",
+          "color": "чёрный"
+        }
+      },
+      {
+        "q": "синие джинсы",
+        "expect": {
+          "category": "джинсы",
+          "color": "синий"
+        }
+      },
+      {
+        "q": "кеды",
+        "expect": {
+          "category": "кеды"
+        }
+      },
+      {
+        "q": "парка",
+        "expect": {
+          "category": "парка"
+        }
+      },
+      {
+        "q": "тренч",
+        "expect": {
+          "category": "тренч"
+        }
+      },
+      {
+        "q": "жилет",
+        "expect": {
+          "category": "жилет"
+        }
+      },
+      {
+        "q": "кардиган",
+        "expect": {
+          "category": "кардиган"
+        }
+      },
+      {
+        "q": "лонгслив",
+        "expect": {
+          "category": "лонгслив"
+        }
+      },
+      {
+        "q": "юбка",
+        "expect": {
+          "category": "юбка"
+        }
+      },
+      {
+        "q": "шорты",
+        "expect": {
+          "category": "шорты"
+        }
+      },
+      {
+        "q": "сумка",
+        "expect": {
+          "category": "сумка"
+        }
+      },
+      {
+        "q": "чёрный худи",
+        "expect": {
+          "category": "худи",
+          "color": "чёрный"
+        }
+      },
+      {
+        "q": "бежевое пальто",
+        "expect": {
+          "category": "пальто",
+          "color": "бежевый"
+        }
+      }
+    ],
+    "word_forms": [
+      {
+        "q": "чёрную куртку",
+        "expect": {
+          "category": "куртка",
+          "color": "чёрный"
+        }
+      },
+      {
+        "q": "куртка чёрная",
+        "expect": {
+          "category": "куртка",
+          "color": "чёрный"
+        }
+      },
+      {
+        "q": "красное платье",
+        "expect": {
+          "category": "платье",
+          "color": "красный"
+        }
+      },
+      {
+        "q": "зелёную ветровку",
+        "expect": {
+          "category": "ветровка",
+          "color": "зелёный"
+        }
+      },
+      {
+        "q": "белую рубашку",
+        "expect": {
+          "category": "рубашка",
+          "color": "белый"
+        }
+      },
+      {
+        "q": "серое пальто",
+        "expect": {
+          "category": "пальто",
+          "color": "серый"
+        }
+      },
+      {
+        "q": "кожаную куртку",
+        "expect": {
+          "category": "кожаная куртка"
+        }
+      },
+      {
+        "q": "джинсы синие",
+        "expect": {
+          "category": "джинсы",
+          "color": "синий"
+        }
+      },
+      {
+        "q": "синюю куртку",
+        "expect": {
+          "category": "куртка",
+          "color": "синий"
+        }
+      },
+      {
+        "q": "коричневые ботинки",
+        "expect": {
+          "category": "ботинки",
+          "color": "коричневый"
+        }
+      },
+      {
+        "q": "розовое платье",
+        "expect": {
+          "category": "платье",
+          "color": "розовый"
+        }
+      },
+      {
+        "q": "жёлтый свитер",
+        "expect": {
+          "category": "свитер",
+          "color": "жёлтый"
+        }
+      },
+      {
+        "q": "бордовый бомбер",
+        "expect": {
+          "category": "бомбер",
+          "color": "бордовый"
+        }
+      },
+      {
+        "q": "оливковые брюки",
+        "expect": {
+          "category": "брюки",
+          "color": "оливковый"
+        }
+      }
+    ],
+    "budget": [
+      {
+        "q": "куртка до 7000",
+        "expect": {
+          "budget_max": 7000
+        }
+      },
+      {
+        "q": "куртка до 7к",
+        "expect": {
+          "budget_max": 7000
+        }
+      },
+      {
+        "q": "куртка до 7 тысяч",
+        "expect": {
+          "budget_max": 7000
+        }
+      },
+      {
+        "q": "куртка не дороже 7000",
+        "expect": {
+          "budget_max": 7000
+        }
+      },
+      {
+        "q": "куртка от 3000",
+        "expect": {
+          "budget_min": 3000,
+          "budget_max": null
+        }
+      },
+      {
+        "q": "джинсы от 3000 до 8000",
+        "expect": {
+          "budget_min": 3000,
+          "budget_max": 8000
+        }
+      },
+      {
+        "q": "джинсы от 3 до 8 тысяч",
+        "expect": {
+          "budget_min": 3000,
+          "budget_max": 8000
+        }
+      },
+      {
+        "q": "худи бюджет 20000",
+        "expect": {
+          "budget_max": 20000
+        }
+      },
+      {
+        "q": "худи максимум 15к",
+        "expect": {
+          "budget_max": 15000
+        }
+      },
+      {
+        "q": "худи 15к",
+        "expect": {
+          "budget_max": 15000
+        }
+      },
+      {
+        "q": "куртка до 15 000 ₽",
+        "expect": {
+          "budget_max": 15000
+        }
+      },
+      {
+        "q": "куртка до 48",
+        "expect": {
+          "budget_max": null
+        }
+      },
+      {
+        "q": "куртка не выше 10000",
+        "expect": {
+          "budget_max": 10000
+        }
+      },
+      {
+        "q": "худи не более 5к",
+        "expect": {
+          "budget_max": 5000
+        }
+      },
+      {
+        "q": "джинсы от 2 до 5 тысяч",
+        "expect": {
+          "budget_min": 2000,
+          "budget_max": 5000
+        }
+      },
+      {
+        "q": "пальто от 20к",
+        "expect": {
+          "budget_min": 20000
+        }
+      },
+      {
+        "q": "куртка до 15000 руб",
+        "expect": {
+          "budget_max": 15000
+        }
+      },
+      {
+        "q": "худи до 9 900",
+        "expect": {
+          "budget_max": 9900
+        }
+      }
+    ],
+    "sizes": [
+      {
+        "q": "худи размер L",
+        "expect": {
+          "size": "L"
+        }
+      },
+      {
+        "q": "куртка размер M",
+        "expect": {
+          "size": "M"
+        }
+      },
+      {
+        "q": "джинсы размер 48",
+        "expect": {
+          "size": "48"
+        }
+      },
+      {
+        "q": "кроссовки размер 42",
+        "expect": {
+          "size": "42"
+        }
+      },
+      {
+        "q": "худи XL",
+        "expect": {
+          "size": "XL"
+        }
+      },
+      {
+        "q": "куртка M",
+        "expect": {
+          "size": "M"
+        }
+      },
+      {
+        "q": "куртка 48",
+        "expect": {
+          "size": null
+        }
+      },
+      {
+        "q": "худи размер M или L",
+        "expect": {
+          "sizes": [
+            "M",
+            "L"
+          ]
+        }
+      },
+      {
+        "q": "платье размер S",
+        "expect": {
+          "size": "S"
+        }
+      },
+      {
+        "q": "куртка размер XXL",
+        "expect": {
+          "size": "XXL"
+        }
+      },
+      {
+        "q": "джинсы размер 46",
+        "expect": {
+          "size": "46"
+        }
+      },
+      {
+        "q": "кроссовки размер 43",
+        "expect": {
+          "size": "43"
+        }
+      },
+      {
+        "q": "худи size M",
+        "expect": {
+          "size": "M"
+        }
+      }
+    ],
+    "multi": [
+      {
+        "q": "чёрный или зелёный худи",
+        "expect": {
+          "colors": [
+            "чёрный",
+            "зелёный"
+          ],
+          "category": "худи"
+        }
+      },
+      {
+        "q": "Nike или Adidas кроссовки",
+        "expect": {
+          "brands_include": [
+            "Nike",
+            "Adidas"
+          ]
+        }
+      },
+      {
+        "q": "худи или свитшот",
+        "expect": {
+          "categories_include": [
+            "худи",
+            "свитшот"
+          ]
+        }
+      },
+      {
+        "q": "Кроссовки Nike или Adidas, размер 42",
+        "expect": {
+          "brands_include": [
+            "Nike",
+            "Adidas"
+          ],
+          "size": "42"
+        }
+      },
+      {
+        "q": "синий или чёрный бомбер",
+        "expect": {
+          "colors": [
+            "синий",
+            "чёрный"
+          ]
+        }
+      },
+      {
+        "q": "красный или белый свитер",
+        "expect": {
+          "colors": [
+            "красный",
+            "белый"
+          ]
+        }
+      },
+      {
+        "q": "Zara или Nike платье",
+        "expect": {
+          "brands_include": [
+            "Zara",
+            "Nike"
+          ]
+        }
+      },
+      {
+        "q": "куртка или бомбер",
+        "expect": {
+          "categories_include": [
+            "куртка",
+            "бомбер"
+          ]
+        }
+      },
+      {
+        "q": "размер 42 или 43 кроссовки",
+        "expect": {
+          "sizes": [
+            "42",
+            "43"
+          ]
+        }
+      }
+    ],
+    "brands": [
+      {
+        "q": "Nike худи",
+        "expect": {
+          "brand": "Nike",
+          "category": "худи"
+        }
+      },
+      {
+        "q": "Adidas кроссовки",
+        "expect": {
+          "brand": "Adidas"
+        }
+      },
+      {
+        "q": "Zara платье",
+        "expect": {
+          "brand": "Zara"
+        }
+      },
+      {
+        "q": "куртка без бренда",
+        "expect": {
+          "brand": null,
+          "category": "куртка"
+        }
+      },
+      {
+        "q": "Puma худи",
+        "expect": {
+          "brand": "Puma"
+        }
+      },
+      {
+        "q": "New Balance кроссовки",
+        "expect": {
+          "brand": "New Balance"
+        }
+      },
+      {
+        "q": "Uniqlo свитер",
+        "expect": {
+          "brand": "Uniqlo"
+        }
+      },
+      {
+        "q": "Reebok кроссовки",
+        "expect": {
+          "brand": "Reebok"
+        }
+      }
+    ],
+    "unknown": [
+      {
+        "q": "куртка xyzzy",
+        "expect": {
+          "category": "куртка",
+          "rest_includes": "xyzzy"
+        }
+      },
+      {
+        "q": "flibbertigibbet худи",
+        "expect": {
+          "category": "худи",
+          "rest_includes": "flibbertigibbet"
+        }
+      },
+      {
+        "q": "редкий фасон куртка",
+        "expect": {
+          "category": "куртка",
+          "rest_includes": "редкий"
+        }
+      },
+      {
+        "q": "куртка astrakhan-cut",
+        "expect": {
+          "category": "куртка",
+          "rest_includes": "astrakhan"
+        }
+      },
+      {
+        "q": "худи y2k",
+        "expect": {
+          "category": "худи",
+          "rest_includes": "y2k"
+        }
+      },
+      {
+        "q": "джинсы barrel fit",
+        "expect": {
+          "category": "джинсы"
+        }
+      },
+      {
+        "q": "платье midi",
+        "expect": {
+          "category": "платье",
+          "rest_includes": "midi"
+        }
+      }
+    ],
+    "negations": [
+      {
+        "q": "не красный худи",
+        "expect": {
+          "color": null,
+          "rest_includes": "не красный",
+          "has_warning": true
+        }
+      },
+      {
+        "q": "худи не чёрный",
+        "expect": {
+          "color": null,
+          "has_warning": true
+        }
+      },
+      {
+        "q": "не белый свитер",
+        "expect": {
+          "color": null,
+          "has_warning": true
+        }
+      },
+      {
+        "q": "бомбер не зелёный",
+        "expect": {
+          "color": null,
+          "has_warning": true
+        }
+      }
+    ],
+    "conflicts": [
+      {
+        "q": "куртка от 10000 до 5000",
+        "expect": {
+          "budget_min": 10000,
+          "budget_max": 5000
+        }
+      }
+    ],
+    "published_examples": [
+      {
+        "q": "Чёрная кожаная куртка",
+        "expect": {
+          "color": "чёрный",
+          "category_one_of": [
+            "кожаная куртка",
+            "куртка"
+          ]
+        }
+      },
+      {
+        "q": "Худи оверсайз, размер L, до 7000 ₽",
+        "expect": {
+          "category": "худи",
+          "size": "L",
+          "budget_max": 7000
+        }
+      },
+      {
+        "q": "Джинсы синие, размер 48, от 3000 до 8000 ₽",
+        "expect": {
+          "category": "джинсы",
+          "color": "синий",
+          "size": "48",
+          "budget_min": 3000,
+          "budget_max": 8000
+        }
+      },
+      {
+        "q": "Кроссовки Nike или Adidas, размер 42",
+        "expect": {
+          "category": "кроссовки",
+          "brands_include": [
+            "Nike",
+            "Adidas"
+          ],
+          "size": "42"
+        }
+      }
+    ],
+    "features_rest": [
+      {
+        "q": "худи оверсайз",
+        "expect": {
+          "category": "худи",
+          "features_include": [
+            "oversize"
+          ]
+        }
+      },
+      {
+        "q": "винтаж куртка",
+        "expect": {
+          "category": "куртка",
+          "rest_includes": "винтаж"
+        }
+      },
+      {
+        "q": "кожаная винтаж oversize куртка",
+        "expect": {
+          "category": "куртка",
+          "rest_includes": "винтаж"
+        }
+      },
+      {
+        "q": "slim джинсы",
+        "expect": {
+          "category": "джинсы"
+        }
+      },
+      {
+        "q": "спортивный костюм",
+        "expect": {
+          "category": "костюм"
+        }
+      },
+      {
+        "q": "хлопковая футболка",
+        "expect": {
+          "category": "футболка"
+        }
+      },
+      {
+        "q": "шерстяное пальто",
+        "expect": {
+          "category": "пальто"
+        }
+      }
+    ]
+  }
+}

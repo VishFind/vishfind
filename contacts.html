@@ -9,11 +9,11 @@
   <script>
     (function () {
       try {
-        var s = localStorage.getItem('isearch-theme');
-        var t = s || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        var s = localStorage.getItem('vishfind-theme') || localStorage.getItem('isearch-theme');
+        var t = s || 'light';
         document.documentElement.setAttribute('data-theme', t);
       } catch (e) {
-        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.setAttribute('data-theme', 'light');
       }
     })();
   </script>
@@ -26,7 +26,8 @@
     <div class="wrap glass">
       <a class="brand" href="/">VishFind</a>
       <div class="header-right">
-        <nav class="nav" aria-label="Основное">
+        <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="site-nav">Меню</button>
+        <nav class="nav" id="site-nav" aria-label="Основное">
           <a href="/">Поиск</a>
           <a href="/about.html">О проекте</a>
           <a href="/contacts.html" aria-current="page">Контакты</a>
@@ -35,12 +36,12 @@
       </div>
     </div>
   </header>
-  <main class="page">
+  <main class="page reveal">
     <div class="wrap">
       <h1>Контакты</h1>
-      <p>По вопросам работы сервиса, ошибкам разбора и предложениям по площадкам пишите на почту.</p>
-      <p class="vf-contact">Почта: <a href="mailto:YOUR_EMAIL@example.com">YOUR_EMAIL@example.com</a></p>
-      <p class="muted">Замените адрес в файле <code>contacts.html</code> на рабочий перед публикацией.</p>
+      <p>VishFind отвечает за разбор запроса и подготовку переходов к поиску на сторонних сайтах. Оплату за товары сервис не принимает. По ошибке разбора, неточной ссылке или предложению новой площадки напишите, когда будет подключена публичная почта.</p>
+      <p>Сейчас отдельный почтовый ящик не опубликован, поэтому рабочий адрес здесь не показываем. Пока сервис можно проверить прямо в поиске: опишите вещь и откройте площадку из выдачи.</p>
+      <p><a href="/">Перейти к поиску</a> · <a href="/about.html">О проекте</a></p>
     </div>
   </main>
   <footer class="site-footer">

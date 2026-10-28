@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
-    "compare-photo": "node scripts/compare-photo-pipelines.js"
+    "compare-photo": "node scripts/compare-photo-pipelines.js",
+    "marketplace-report": "node scripts/marketplace-report.js",
+    "query-corpus": "node scripts/run-query-corpus.js"
   },
   "engines": {
     "node": ">=18.0.0"
