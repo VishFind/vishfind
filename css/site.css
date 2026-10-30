@@ -1534,34 +1534,56 @@ html {
   overflow-wrap: anywhere;
 }
 
-/* Шапка: навигация сворачивается раньше, чтобы кнопка «Тема» была доступна */
+/* Мобильная шапка: 2 строки — бренд; тема + избранное + история. Без бургер-меню. */
 @media (max-width: 720px) {
-  .nav-toggle {
-    display: inline-flex;
-  }
-  .nav {
-    display: none;
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
-    min-width: 180px;
+  .site-header .wrap {
     flex-direction: column;
-    gap: 0;
-    padding: 8px;
-    background: var(--glass-strong);
-    border: 1px solid var(--stroke);
-    border-radius: var(--radius);
-    box-shadow: 0 12px 32px var(--shadow);
-    -webkit-backdrop-filter: blur(var(--blur-mobile));
-    backdrop-filter: blur(var(--blur-mobile));
-  }
-  .site-header.is-nav-open .nav {
-    display: flex;
-    z-index: 5;
-    background: var(--bg1);
-  }
-  .header-right {
+    flex-wrap: nowrap;
+    align-items: stretch;
+    justify-content: flex-start;
     gap: 8px;
+    padding: 10px 12px;
+  }
+  .site-header .brand {
+    display: flex;
+    width: 100%;
+    min-height: 0;
+  }
+  .site-header .brand-logo {
+    height: clamp(40px, 11vw, 52px);
+    max-width: min(240px, 88vw);
+  }
+  .site-header .header-right {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    width: 100%;
+  }
+  .site-header .header-tools {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    width: auto;
+    order: 2;
+  }
+  .site-header .theme-toggle {
+    order: 1;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .site-header .header-tool {
+    flex: 0 1 auto;
+    font-size: 0.75rem;
+    padding: 6px 8px;
+    min-width: 0;
+  }
+  .site-header .nav-toggle,
+  .site-header .nav,
+  .site-header.is-nav-open .nav {
+    display: none;
   }
 }
 
@@ -1695,12 +1717,6 @@ html {
 @media (min-width: 1280px) {
   .hero h1 {
     font-size: 3.6rem;
-  }
-}
-@media (max-width: 720px) {
-  .nav-toggle {
-    display: inline-flex;
-    align-items: center;
   }
 }
 @media (min-width: 721px) {
@@ -2459,25 +2475,6 @@ body.sheet-open {
   .sheet-panel {
     border-radius: var(--radius-lg);
     max-height: min(80vh, 640px);
-  }
-}
-
-@media (max-width: 720px) {
-  .header-tools {
-    order: 3;
-    width: 100%;
-    justify-content: flex-start;
-  }
-  .header-right {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-  .site-header .wrap {
-    flex-wrap: wrap;
-  }
-  .header-tool {
-    font-size: 0.75rem;
-    padding: 6px 8px;
   }
 }
 
