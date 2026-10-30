@@ -783,22 +783,24 @@ async function handleSearch(req, res) {
     seenSourceDomains.add(extraHost);
   }
 
-  // Единый порядок групп на сервере (клиент не переставляет маркетплейсы выше ресейла).
+  // Единый порядок: official → other (Lamoda/Avito) → marketplace_tail → reseller.
   const groupRank = (s) => {
     const o = Number(s.display_group_order);
     if (Number.isFinite(o) && o > 0) return o;
     if (s.display_group === 'official' || s.link_kind === 'official_store_entry') return 1;
-    if (s.display_group === 'reseller') return 2;
-    if (s.display_group === 'other') return 3;
-    if (s.display_group === 'marketplace_tail' || ['ozon', 'wildberries', 'yandex_market'].includes(s.id)) return 4;
-    return 3;
+    if (s.display_group === 'other') return 2;
+    if (s.display_group === 'marketplace_tail' || ['ozon', 'wildberries', 'yandex_market'].includes(s.id)) {
+      return 3;
+    }
+    if (s.display_group === 'reseller') return 4;
+    return 2;
   };
   const tailOrder = { ozon: 0, wildberries: 1, yandex_market: 2 };
   sources.sort((a, b) => {
     const ga = groupRank(a);
     const gb = groupRank(b);
     if (ga !== gb) return ga - gb;
-    if (ga === 4) return (tailOrder[a.id] ?? 9) - (tailOrder[b.id] ?? 9);
+    if (ga === 3) return (tailOrder[a.id] ?? 9) - (tailOrder[b.id] ?? 9);
     return 0;
   });
 

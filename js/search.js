@@ -1115,9 +1115,9 @@
 
   const DISPLAY_GROUP_ORDER = [
     'Официальный магазин бренда',
-    'Реселлеры и ресейл',
     'Другие места поиска',
     'Маркетплейсы',
+    'Реселлеры и ресейл',
   ];
 
   function sourceGroup(source) {
@@ -1343,10 +1343,10 @@
       el(
         'p',
         'understood-phrase',
-        'Подготовлено переходов: '
+        'Переходов: '
           + n
-          + '. Это ссылки на поиск или каталог, а не подтверждённые товары с ценой.'
-          + (p.search_phrase ? ' Общая фраза: «' + p.search_phrase + '».' : '')
+          + ' — на поиск или каталог, не карточки с ценой.'
+          + (p.search_phrase ? ' Фраза: «' + p.search_phrase + '».' : '')
       )
     );
     if (data && data.web_search && data.web_search.user_requested) {
@@ -1368,9 +1368,9 @@
     const filterDefs = [
       { id: 'all', label: 'Все' },
       { id: 'official', label: 'Официальные' },
-      { id: 'reseller', label: 'Ресейл' },
       { id: 'other', label: 'Другие сайты' },
       { id: 'marketplace_tail', label: 'Маркетплейсы' },
+      { id: 'reseller', label: 'Ресейл' },
     ];
     const groupsHost = el('div', 'link-groups-host');
 
@@ -1515,9 +1515,7 @@
     const note = el('p', 'results-disclaimer');
     note.textContent =
       'VishFind подбирает ссылки на сторонние сайты. '
-      + 'Наличие, актуальную цену, подлинность товара '
-      + 'и условия покупки проверяйте у продавца. '
-      + 'Как критерии попали в ссылки — в блоке «Что распозналось?».';
+      + 'Наличие, цену и подлинность проверяйте у продавца.';
     return note;
   }
 
@@ -2166,9 +2164,11 @@
   async function loadHealth() {
     const lead = document.getElementById('hero-lead');
     const leadPhoto =
-      'Опишите вещь текстом или приложите фото. Сервис выделит критерии и подготовит переходы к поиску на сторонних сайтах. Цену, наличие и подлинность проверяйте у продавца.';
+      'Опишите вещь или добавьте фото — подготовим переходы к поиску на сайтах. Цену и наличие смотрите у продавца.';
     const leadText =
-      'Опишите вещь текстом. Сервис выделит критерии и подготовит переходы к поиску на сторонних сайтах. Цену, наличие и подлинность проверяйте у продавца.';
+      'Опишите вещь текстом — подготовим переходы к поиску на сайтах. Цену и наличие смотрите у продавца.';
+    const narrow = typeof window.matchMedia === 'function'
+      && window.matchMedia('(max-width: 720px)').matches;
     try {
       const d = await (await fetch('/api/health', { cache: 'no-store' })).json();
       aiEnabled = !!d.ai_enabled;
@@ -2179,7 +2179,7 @@
         photoBtn.hidden = !aiEnabled;
         photoBtn.setAttribute('aria-hidden', aiEnabled ? 'false' : 'true');
       }
-      if (dropzone) dropzone.hidden = !aiEnabled;
+      if (dropzone) dropzone.hidden = !aiEnabled || narrow;
       if (lead) lead.textContent = aiEnabled ? leadPhoto : leadText;
       if (d && d.ok) {
         setReady(aiEnabled ? '' : 'is-idle', aiEnabled ? 'Поиск и фото готовы' : 'Поиск готов. Фото выключено');

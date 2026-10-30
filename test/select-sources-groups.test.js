@@ -15,7 +15,7 @@ function groups(sel) {
   return sel.selected.map((s) => s.display_group);
 }
 
-test('Nike: официальный → ресейл → other → Ozon/WB/ЯМ; без LIMÉ/MAAG/Befree/Sela', () => {
+test('Nike: официальный → Lamoda/Авито → Ozon/WB/ЯМ → ресейл; без LIMÉ/MAAG/Befree/Sela', () => {
   const sel = selectSources(
     { brands: ['Nike'], search_phrase: 'Nike худи', category: 'худи' },
     { maxSources: 8 }
@@ -33,13 +33,24 @@ test('Nike: официальный → ресейл → other → Ozon/WB/ЯМ; 
   const wb = list.indexOf('wildberries');
   const ym = list.indexOf('yandex_market');
   assert.ok(oz < wb && wb < ym, 'tail order Ozon→WB→YM');
-  assert.equal(list.length - 1, ym, 'YM last');
   const g = groups(sel);
   const firstOfficial = g.indexOf('official');
+  const firstOther = g.indexOf('other');
   const firstReseller = g.indexOf('reseller');
   const firstTail = g.indexOf('marketplace_tail');
   assert.ok(firstOfficial !== -1 && firstOfficial < firstTail);
-  if (firstReseller !== -1) assert.ok(firstReseller < firstTail);
+  if (firstOther !== -1) {
+    assert.ok(firstOther < firstTail, 'Lamoda/Avito before marketplaces');
+  }
+  if (firstReseller !== -1) {
+    assert.ok(firstTail !== -1 && firstTail < firstReseller, 'reseller after marketplaces');
+  }
+  if (list.includes('lamoda_ru') && list.includes('avito')) {
+    assert.ok(list.indexOf('lamoda_ru') < list.indexOf('avito'));
+  }
+  if (list.includes('lamoda_ru')) {
+    assert.ok(list.indexOf('lamoda_ru') < oz, 'Lamoda before Ozon');
+  }
 });
 
 test('Befree: официальный в группе 1, без дубля в other', () => {

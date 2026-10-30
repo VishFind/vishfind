@@ -70,6 +70,10 @@
         </nav>
         <button type="button" class="theme-toggle" id="theme-toggle" aria-pressed="true">Тема</button>
       </div>
+      <nav class="header-mobile-links" aria-label="Разделы сайта">
+        <a href="/about.html">О проекте</a>
+        <a href="/contacts.html">Контакты</a>
+      </nav>
     </div>
   </header>
 
@@ -77,9 +81,9 @@
     <section class="hero reveal" id="hero">
       <div class="wrap">
         <p class="ready" id="ready"><span class="ready-dot" id="ready-dot"></span><span id="ready-label">Проверяем сервис…</span></p>
-        <p class="hero-kicker">Сервис поиска одежды</p>
-        <h1>Поиск редкой и винтажной одежды</h1>
-        <p class="hero-lead" id="hero-lead">Опишите вещь текстом или приложите фото. Сервис выделит критерии и подготовит переходы к поиску на сторонних сайтах. Цену, наличие и подлинность проверяйте у продавца.</p>
+        <p class="hero-kicker">Поиск одежды</p>
+        <h1>Редкая и винтажная одежда</h1>
+        <p class="hero-lead" id="hero-lead">Опишите вещь или добавьте фото — подготовим переходы к поиску на сайтах. Цену и наличие смотрите у продавца.</p>
 
         <div class="quick-chips criteria-chips-host" id="quick-chips" aria-label="Критерии поиска"></div>
 
@@ -92,29 +96,23 @@
               type="text"
               maxlength="300"
               autocomplete="off"
-              placeholder="Напишите название одежды, размер, цену и тд"
+              placeholder="Название, размер, цена…"
               aria-label="Описание вещи"
               value=""
             />
             <div class="search-actions">
-              <button type="button" class="btn btn-ghost" id="btn-photo" title="Добавить фото" hidden>Фото</button>
+              <button type="button" class="btn btn-ghost btn-photo" id="btn-photo" title="Добавить фото" aria-label="Добавить фото" hidden>
+                <svg class="btn-photo-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+                  <path fill="currentColor" d="M9.5 4.5h5l1.2 1.5H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.3L9.5 4.5zm2.5 3.8A4.2 4.2 0 1 0 16.2 12.5 4.2 4.2 0 0 0 12 8.3zm0 1.7a2.5 2.5 0 1 1-2.5 2.5A2.5 2.5 0 0 1 12 10z"/>
+                </svg>
+              </button>
               <button type="button" class="btn btn-primary" id="btn-submit">Искать</button>
             </div>
           </div>
         </div>
 
-        <div class="web-search-opt" id="web-search-opt">
-          <label class="web-search-opt-label" for="opt-web-search">
-            <input type="checkbox" id="opt-web-search" disabled />
-            <span>Дополнить поиск ссылками из интернета</span>
-          </label>
-          <p class="web-search-opt-hint" id="web-search-opt-hint">
-            При включении поисковая фраза передаётся внешнему сервису Ollama для поиска ссылок.
-          </p>
-        </div>
-
         <div class="dropzone glass" id="dropzone" hidden>
-          <p>Перетащите фото сюда или нажмите «Фото»</p>
+          <p>Перетащите фото сюда или нажмите кнопку фото</p>
         </div>
 
         <div class="photo-preview glass" id="photo-preview" hidden>
@@ -129,7 +127,7 @@
 
         <ul class="examples" id="examples" aria-label="Примеры запросов">
           <li><button type="button" data-query="Чёрная кожаная куртка">Чёрная кожаная куртка</button></li>
-          <li><button type="button" data-query="Худи оверсайз, размер L, до 7000 ₽">Худи оверсайз · L · до 7 тыс</button></li>
+          <li><button type="button" data-query="Худи оверсайз, размер L, до 7000 ₽">Худи · L · до 7 тыс</button></li>
           <li><button type="button" data-query="Джинсы синие, размер 48, от 3000 до 8000 ₽">Джинсы · 48 · 3–8 тыс</button></li>
           <li><button type="button" data-query="Кроссовки Nike или Adidas, размер 42">Кроссовки Nike/Adidas · 42</button></li>
         </ul>
@@ -144,7 +142,6 @@
         <div id="compare-slot"></div>
       </div>
     </section>
-    <!-- #btn-new-query монтируется в js после списка ссылок; до поиска скрыт -->
     <div class="new-query-row" id="new-query-row" hidden>
       <button type="button" class="btn btn-ghost" id="btn-new-query" title="Очистить текущий поиск" aria-label="Новый запрос">Новый запрос</button>
     </div>
@@ -152,28 +149,36 @@
     <section class="page-block ad-block reveal" id="ad-placement" aria-labelledby="ad-title">
       <div class="wrap">
         <h2 id="ad-title">Рекламное размещение</h2>
-        <p class="ad-lead">Демонстрация рекламного места. Это не результаты поиска и не каталог товаров.</p>
+        <p class="ad-lead">Демонстрация рекламного места — не результаты поиска.</p>
         <div id="ad-body"></div>
       </div>
     </section>
 
-    <section class="how reveal" id="how" aria-labelledby="how-title">
+    <section class="faq reveal" id="faq" aria-labelledby="faq-title">
       <div class="wrap">
-        <h2 id="how-title">Как устроен поиск</h2>
-        <ol class="how-list">
-          <li>
-            <strong>Разбор запроса</strong>
-            <span>Из текста (и при необходимости фото) выделяются категория, цвет, размер, бюджет, бренд и другие признаки.</span>
-          </li>
-          <li>
-            <strong>Критерии и ссылки</strong>
-            <span>Проверенные фильтры уходят в URL площадки; остальное — в текст запроса или вручную на сайте магазина.</span>
-          </li>
-          <li>
-            <strong>Переход на площадки</strong>
-            <span>Открывается поиск на маркетплейсах. Цену, наличие и доставку смотрите уже там.</span>
-          </li>
-        </ol>
+        <h2 id="faq-title">Частые вопросы</h2>
+        <dl class="faq-list">
+          <div class="faq-item">
+            <dt>Можно искать текстом?</dt>
+            <dd>Да. Введите описание вещи и при необходимости уточните критерии над строкой поиска.</dd>
+          </div>
+          <div class="faq-item">
+            <dt>Как искать по фото?</dt>
+            <dd>Если фото доступно, нажмите кнопку камеры рядом с поиском и выберите снимок. Разбор зависит от настроек сервера.</dd>
+          </div>
+          <div class="faq-item">
+            <dt>Где происходит покупка?</dt>
+            <dd>На сайте продавца или площадки по ссылке. VishFind не принимает оплату за товары.</dd>
+          </div>
+          <div class="faq-item">
+            <dt>Если точного совпадения нет?</dt>
+            <dd>Измените критерии или формулировку и повторите поиск. Цену, наличие и подлинность всегда проверяйте у продавца.</dd>
+          </div>
+          <div class="faq-item">
+            <dt>Что такое избранное и история?</dt>
+            <dd>Они хранятся только в вашем браузере: можно сохранить ссылки и вернуться к прошлым запросам.</dd>
+          </div>
+        </dl>
       </div>
     </section>
   </main>

@@ -12,10 +12,9 @@ const about = fs.readFileSync(path.join(root, 'about.html'), 'utf8');
 const ollama = fs.readFileSync(path.join(root, 'lib/ollama-web.js'), 'utf8');
 const indexHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 
-test('клиент: переключатель по умолчанию и payload только при opt-in', () => {
-  assert.match(indexHtml, /id="opt-web-search"/);
-  assert.match(indexHtml, /Дополнить поиск ссылками из интернета/);
-  assert.match(indexHtml, /внешнему сервису Ollama/);
+test('клиент: UI opt-in убран; payload web_search только при явном opt-in', () => {
+  assert.doesNotMatch(indexHtml, /id="opt-web-search"/);
+  assert.doesNotMatch(indexHtml, /Дополнить поиск ссылками из интернета/);
   assert.match(js, /userWantsWebSearch/);
   assert.match(js, /payload\.web_search = true/);
   assert.match(js, /webSearchServerEnabled/);
@@ -52,7 +51,7 @@ test('ollama-web: в API только query + max_results; fetch отдельн�
 });
 
 test('about: переходы, без оплаты/партнёрства/гарантий подлинности', () => {
-  assert.match(about, /не подтверждённый каталог/);
+  assert.match(about, /не каталог с подтверждёнными/);
   assert.match(about, /Не продаёт товары и не принимает оплату/);
   assert.match(about, /Не является партнёром/);
   assert.match(about, /Не подтверждает подлинность/);

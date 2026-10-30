@@ -65,7 +65,10 @@ test('Dior/AMIRI — официальный ориентир + не только
     );
     assert.ok(!ids.includes('the_cultt'), 'CULTT не в активной выдаче без разрешения');
     assert.ok(!ids.includes('tsum_collect') && !ids.includes('tsum_ru'), 'TSUM исключён продуктово');
-    assert.ok(!ids.includes('ozon') || ids.indexOf('ozon') > 2, brand + ' ozon not first');
+    assert.ok(!ids.includes('ozon') || ids.indexOf('ozon') > 0, brand + ' ozon not first');
+    if (ids.includes('lamoda_ru') && ids.includes('ozon')) {
+      assert.ok(ids.indexOf('lamoda_ru') < ids.indexOf('ozon'), brand + ' Lamoda before Ozon');
+    }
   }
 });
 
