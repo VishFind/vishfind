@@ -289,23 +289,56 @@
     return pFast + (1 - pFast) * (1 - Math.pow(1 - s, 1.2));
   }
 
+  function brandScale() {
+    try {
+      const w = window.innerWidth || 800;
+      if (w > 720) return 0.5;
+      /* ~2× к desktop scale(0.5); на очень узких чуть меньше, чтобы влезло */
+      if (w <= 320) return 0.84;
+      if (w <= 375) return 0.92;
+      return 1;
+    } catch (_) {
+      return 0.5;
+    }
+  }
+
   function placeBrand(logo, dots, copy, scene) {
     const box = logo.getBBox();
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
     const tx = scene.logo[0];
-    const ty = scene.logo[1];
-    logo.setAttribute('transform',
-      'translate(' + tx + ' ' + ty + ') translate(' + cx + ' ' + cy + ') scale(0.5) translate(' + (-cx) + ' ' + (-cy) + ')');
-    const rise = box.height / 4;
+    const s = brandScale();
     const viewH = scene.viewBox[1];
-    const bottom = ty + box.y + box.height * 0.75;
-    const currentTop = (73.5 / 100) * viewH - rise;
+
+    if (s === 0.5) {
+      /* Desktop: прежняя раскладка без изменений */
+      const ty = scene.logo[1];
+      logo.setAttribute('transform',
+        'translate(' + tx + ' ' + ty + ') translate(' + cx + ' ' + cy + ') scale(0.5) translate(' + (-cx) + ' ' + (-cy) + ')');
+      const rise = box.height / 4;
+      const bottom = ty + box.y + box.height * 0.75;
+      const currentTop = (73.5 / 100) * viewH - rise;
+      const gap = Math.max(0, currentTop - bottom);
+      const nextTop = bottom + gap * 0.72;
+      copy.style.top = (nextTop / viewH * 100) + '%';
+      dots.setAttribute('transform', 'translate(0 ' + (-(rise + (currentTop - nextTop))) + ')');
+      return { width: box.width, height: box.height, rise: rise, gap: gap, nextGap: gap * 0.72, scale: s };
+    }
+
+    /* Mobile ~2×: scale учитывается в позиции названия, без CSS transform на обёртке */
+    const ty = scene.logo[1] - box.height * (s - 0.5) * 0.35;
+    logo.setAttribute('transform',
+      'translate(' + tx + ' ' + ty + ') translate(' + cx + ' ' + cy + ') scale(' + s + ') translate(' + (-cx) + ' ' + (-cy) + ')');
+    const rise = (box.height * s) / 2;
+    const bottom = ty + cy + (box.height / 2) * s;
+    const currentTop = (73.5 / 100) * viewH - rise * 0.15;
     const gap = Math.max(0, currentTop - bottom);
-    const nextTop = bottom + gap * 0.72;
+    let nextTop = bottom + gap * 0.45;
+    const maxTop = viewH * 0.78;
+    if (nextTop > maxTop) nextTop = maxTop;
     copy.style.top = (nextTop / viewH * 100) + '%';
-    dots.setAttribute('transform', 'translate(0 ' + (-(rise + (currentTop - nextTop))) + ')');
-    return { width: box.width, height: box.height, rise: rise, gap: gap, nextGap: gap * 0.72 };
+    dots.setAttribute('transform', 'translate(0 ' + (-(rise * 0.5 + Math.max(0, currentTop - nextTop))) + ')');
+    return { width: box.width * s, height: box.height * s, rise: rise, gap: gap, nextGap: gap * 0.45, scale: s };
   }
 
   function concealStrokes(svg) {

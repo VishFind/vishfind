@@ -545,6 +545,14 @@ html[data-theme='dark'] .welcome-splash .vf-neutral {
 .welcome-splash .vf-accent {
   fill: #85c633;
 }
+/* Мобильно: только название проекта (~2×), без раздувания всего splash */
+@media (max-width: 720px) {
+  .welcome-splash__title {
+    font-size: clamp(2.4rem, 11.5cqi, 4.2rem);
+    line-height: 1.05;
+    margin-bottom: 0.18em;
+  }
+}
 .nav {
   display: flex;
   flex-wrap: wrap;
@@ -2682,4 +2690,22 @@ html[data-theme='dark'] .color-swatch.is-light {
 }
 .source-note.is-error {
   color: var(--danger);
+}
+
+/* Мобильное оглавление критериев: компактно, без растягивания и обрезки */
+@media (max-width: 720px) {
+  .criteria-chip-wrap {
+    max-width: 100%;
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+  .criteria-chip {
+    max-width: 100%;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    height: auto;
+    min-height: 40px;
+    line-height: 1.25;
+  }
 }
