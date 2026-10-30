@@ -12,9 +12,17 @@ Thumbs.db
 # Локальные/тестовые фото (в репозиторий не кладём)
 img/*
 !img/.gitkeep
+img/test-jacket.jpg
+images/team.jpeg
 test/photos/
 test/results.json
 scripts/photo-pipeline-compare.json
 *.local.json
 isearch-project-backup.zip
 images (1).jpg
+
+# Снимки рабочей копии (секреты в них не кладём, в Git тоже)
+archives/
+
+# Локальные настройки Cursor, не часть приложения
+.cursor/

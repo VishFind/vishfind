@@ -9,7 +9,21 @@
  * или честная пометка «вручную» / отдельные переходы не плодим автоматически.
  */
 
-const { isFilterEnabled, priceUrlAllowed } = require('../lib/marketplace-capabilities');
+const {
+  isFilterEnabled,
+  priceUrlAllowed,
+  sortPriceAscAllowed,
+  sortPriceDescAllowed,
+  deliveryFastestAllowed,
+  sortPreferencesConflict,
+  DELIVERY_PREFERENCE_ANY,
+  DELIVERY_PREFERENCE_FASTEST,
+  PRICE_SORT_DEFAULT,
+  PRICE_SORT_ASC,
+  PRICE_SORT_DESC,
+  normalizeDeliveryPreference,
+  resolvePriceSort,
+} = require('../lib/marketplace-capabilities');
 
 const TYPE_LABELS = {
   marketplace: 'маркетплейс',
@@ -356,10 +370,15 @@ function describeNonPriceFilters(parsed, caps) {
 
 /**
  * Базовая фраза без цены (search_phrase уже без бюджета).
- * Размеры: один → «размер X»; несколько уже в rest/phrase.
+ * eBay / Vestiaire: английский вариант, если подготовлен (RU для остальных).
  */
-function phraseForSource(parsed) {
-  return parsed.search_phrase || parsed.raw_query || '';
+function phraseForSource(parsed, source) {
+  const id = source && source.id;
+  if (id === 'ebay' || id === 'vestiaire') {
+    const en = parsed && parsed.search_phrase_en;
+    if (en && String(en).trim()) return String(en).trim();
+  }
+  return (parsed && (parsed.search_phrase || parsed.raw_query)) || '';
 }
 
 /** Текстовое уточнение бюджета для in_query (только RUB). */
@@ -377,13 +396,214 @@ function templateAcceptsQuery(source) {
   return String((source && source.url_template) || '').includes('{q}');
 }
 
-function buildUrl(source, parsed) {
+function applySortExtras(url, extras) {
+  let next = url;
+  if (extras && typeof extras === 'object' && !Array.isArray(extras)) {
+    for (const [k, v] of Object.entries(extras)) {
+      if (!k || v == null || String(v).trim() === '') continue;
+      next = appendParam(next, k, v);
+    }
+  }
+  return next;
+}
+
+/**
+ * Сортировка по цене: default | asc | desc.
+ * Только при соответствующем *_verified. Не пишет «дешевле/дороже» в {q}.
+ */
+function applyPriceSort(source, url, priceSort) {
+  const sort = priceSort || PRICE_SORT_DEFAULT;
+  if (sort === PRICE_SORT_DEFAULT) {
+    return {
+      url,
+      price_sort: PRICE_SORT_DEFAULT,
+      sort_price_asc_applied: false,
+      sort_price_desc_applied: false,
+      sort_price_note: null,
+      filter_details: [],
+    };
+  }
+
+  if (sort === PRICE_SORT_ASC) {
+    if (!sortPriceAscAllowed(source)) {
+      return {
+        url,
+        price_sort: PRICE_SORT_ASC,
+        sort_price_asc_applied: false,
+        sort_price_desc_applied: false,
+        sort_price_note: 'Сортировка по возрастанию цены не подтверждена',
+        filter_details: [
+          {
+            kind: 'info',
+            field: 'sort_price_asc',
+            text: 'Сортировка по возрастанию цены не подтверждена',
+          },
+        ],
+      };
+    }
+    let next = appendParam(url, source.sort_price_asc_param, source.sort_price_asc_value);
+    next = applySortExtras(next, source.sort_price_asc_extra_params);
+    const appliedText =
+      source.sort_price_asc_label
+      || 'Сортировка: сначала дешевле';
+    return {
+      url: next,
+      price_sort: PRICE_SORT_ASC,
+      sort_price_asc_applied: true,
+      sort_price_desc_applied: false,
+      sort_price_note: appliedText,
+      filter_details: [{ kind: 'applied', field: 'sort_price_asc', text: appliedText }],
+    };
+  }
+
+  if (sort === PRICE_SORT_DESC) {
+    if (!sortPriceDescAllowed(source)) {
+      return {
+        url,
+        price_sort: PRICE_SORT_DESC,
+        sort_price_asc_applied: false,
+        sort_price_desc_applied: false,
+        sort_price_note: 'Сортировка по убыванию цены не подтверждена',
+        filter_details: [
+          {
+            kind: 'info',
+            field: 'sort_price_desc',
+            text: 'Сортировка по убыванию цены не подтверждена',
+          },
+        ],
+      };
+    }
+    let next = appendParam(url, source.sort_price_desc_param, source.sort_price_desc_value);
+    next = applySortExtras(next, source.sort_price_desc_extra_params);
+    const appliedText =
+      source.sort_price_desc_label
+      || 'Сортировка: сначала дороже';
+    return {
+      url: next,
+      price_sort: PRICE_SORT_DESC,
+      sort_price_asc_applied: false,
+      sort_price_desc_applied: true,
+      sort_price_note: appliedText,
+      filter_details: [{ kind: 'applied', field: 'sort_price_desc', text: appliedText }],
+    };
+  }
+
+  return {
+    url,
+    price_sort: PRICE_SORT_DEFAULT,
+    sort_price_asc_applied: false,
+    sort_price_desc_applied: false,
+    sort_price_note: null,
+    filter_details: [],
+  };
+}
+
+/** @deprecated используйте applyPriceSort; оставлено для старых вызовов. */
+function applySortPriceAsc(source, url, preferCheaper) {
+  return applyPriceSort(source, url, preferCheaper ? PRICE_SORT_ASC : PRICE_SORT_DEFAULT);
+}
+
+/**
+ * Предпочтение доставки. "any" — без параметра.
+ * "fastest" — только при delivery_fastest_verified + kind filter|sort.
+ * Не добавляет «быстрая доставка» в {q}. Не выбирает город/ПВЗ/подписку.
+ */
+function applyDeliveryPreference(source, url, deliveryPreference, opts) {
+  const priceSort =
+    (opts && opts.price_sort)
+    || ((opts && opts.prefer_cheaper) ? PRICE_SORT_ASC : PRICE_SORT_DEFAULT);
+  const pref = normalizeDeliveryPreference(deliveryPreference) || DELIVERY_PREFERENCE_ANY;
+  if (pref === DELIVERY_PREFERENCE_ANY) {
+    return {
+      url,
+      delivery_preference: DELIVERY_PREFERENCE_ANY,
+      delivery_fastest_applied: false,
+      delivery_fastest_kind: null,
+      delivery_note: null,
+      filter_details: [],
+    };
+  }
+  if (sortPreferencesConflict(source, priceSort, pref)) {
+    return {
+      url,
+      delivery_preference: DELIVERY_PREFERENCE_FASTEST,
+      delivery_fastest_applied: false,
+      delivery_fastest_kind: 'sort',
+      delivery_note:
+        'Сортировка по сроку доставки не совмещена с сортировкой по цене — уточните приоритет на площадке',
+      filter_details: [
+        {
+          kind: 'info',
+          field: 'delivery_fastest',
+          text: 'Сортировка по сроку доставки не совмещена с сортировкой по цене — уточните приоритет на площадке',
+        },
+      ],
+    };
+  }
+  if (!deliveryFastestAllowed(source)) {
+    return {
+      url,
+      delivery_preference: DELIVERY_PREFERENCE_FASTEST,
+      delivery_fastest_applied: false,
+      delivery_fastest_kind: null,
+      delivery_note: 'Быстрая доставка в ссылке не подтверждена — уточните на площадке',
+      filter_details: [
+        {
+          kind: 'info',
+          field: 'delivery_fastest',
+          text: 'Быстрая доставка в ссылке не подтверждена — уточните на площадке',
+        },
+      ],
+    };
+  }
+  const kind = source.delivery_fastest_kind;
+  const next = appendParam(url, source.delivery_fastest_param, source.delivery_fastest_value);
+  const appliedText =
+    kind === 'sort'
+      ? 'Сортировка: как можно скорее'
+      : 'Фильтр быстрой доставки передан в ссылку';
+  const locationNote = source.delivery_fastest_requires_location
+    ? ' Город и способ доставки уточните на площадке.'
+    : '';
+  return {
+    url: next,
+    delivery_preference: DELIVERY_PREFERENCE_FASTEST,
+    delivery_fastest_applied: true,
+    delivery_fastest_kind: kind,
+    delivery_note: appliedText + locationNote,
+    filter_details: [
+      {
+        kind: 'applied',
+        field: 'delivery_fastest',
+        text: appliedText + locationNote,
+      },
+    ],
+  };
+}
+
+function buildUrl(source, parsed, opts) {
+  const resolvedSort = resolvePriceSort(opts || {});
+  const priceSort = resolvedSort.ok ? resolvedSort.priceSort : PRICE_SORT_DEFAULT;
+  const preferCheaper = priceSort === PRICE_SORT_ASC;
+  const deliveryPreference =
+    normalizeDeliveryPreference(opts && opts.delivery_preference) || DELIVERY_PREFERENCE_ANY;
   const range = normalizeRange(parsed);
-  const basePhrase = phraseForSource(parsed);
+  const basePhrase = phraseForSource(parsed, source);
   const tmpl = String(source.url_template || '');
   const acceptsQuery = templateAcceptsQuery(source);
   let phrase = basePhrase;
-  let url = tmpl.replace('{q}', encodeURIComponent(phrase));
+  // Не подставляем пустой {q}: витрина без запроса помечается отдельно.
+  let url;
+  if (acceptsQuery) {
+    if (!phrase || !String(phrase).trim()) {
+      url = tmpl.replace(/[?&][^=]*=\{q\}/g, '').replace(/\{q\}/g, '');
+      url = url.replace(/\?&/, '?').replace(/[?&]$/, '');
+    } else {
+      url = tmpl.replace('{q}', encodeURIComponent(phrase));
+    }
+  } else {
+    url = tmpl.replace('{q}', '');
+  }
   const price = applyPriceFilters(source, url, range);
   url = price.url;
 
@@ -393,7 +613,8 @@ function buildUrl(source, parsed) {
   const inQuery = nonPrice.inQuery.slice();
   const unsupported = [...(price.unsupported_filters || []), ...nonPrice.unsupported];
   let price_filter_note = price.price_filter_note;
-  let budget_in_query = false;
+  // Бюджет словами в {q} больше не подставляем — только подтверждённые URL-параметры.
+  const budget_in_query = false;
 
   const currency = source.price_currency || 'RUB';
   const wantsBudget = (range.min != null || range.max != null) && !range.invalid;
@@ -403,7 +624,6 @@ function buildUrl(source, parsed) {
       // Рублёвый бюджет не подставляем в чужую валюту ни фильтром, ни словами.
       // Сообщение уже может быть в price.filter_details.
     } else if (!acceptsQuery) {
-      // Витрина/главная без {q}: бюджет не передан.
       filter_details = filter_details.filter((d) => d && d.field !== 'price' && d.field !== 'price_min' && d.field !== 'price_max');
       filter_details.push({
         kind: 'info',
@@ -412,30 +632,54 @@ function buildUrl(source, parsed) {
       });
       price_filter_note = 'Бюджет в ссылку не передан (витрина без поискового параметра).';
     } else {
-      const budgetText = formatBudgetInQuery(range);
-      if (budgetText) {
-        phrase = (basePhrase ? basePhrase + ' ' : '') + budgetText;
-        url = tmpl.replace('{q}', encodeURIComponent(phrase));
-        budget_in_query = true;
-        // Убрать «задайте вручную» по цене — заменяем честным in_query.
-        filter_details = filter_details.filter(
-          (d) => !(d && (d.field === 'price' || d.field === 'price_min' || d.field === 'price_max'))
-        );
+      // Не пишем «до N рублей» / «дешевле» в поисковую фразу вместо фильтра.
+      filter_details = filter_details.filter(
+        (d) => !(d && (d.field === 'price' || d.field === 'price_min' || d.field === 'price_max') && d.kind === 'in_query')
+      );
+      const hasManualPrice = filter_details.some(
+        (d) => d && (d.field === 'price' || d.field === 'price_min' || d.field === 'price_max')
+      );
+      if (!hasManualPrice) {
         filter_details.push({
-          kind: 'in_query',
+          kind: 'manual',
           field: 'price',
-          text: 'Бюджет добавлен в поисковый запрос. Диапазон уточните на сайте.',
+          text: 'Бюджет в URL этой площадки не подтверждён — задайте диапазон на сайте.',
         });
-        inQuery.push('price');
-        // Не считаем unsupported, раз передали словами.
-        for (let i = unsupported.length - 1; i >= 0; i--) {
-          if (unsupported[i] === 'price' || unsupported[i] === 'price_min' || unsupported[i] === 'price_max') {
-            unsupported.splice(i, 1);
-          }
-        }
-        price_filter_note = 'Бюджет добавлен в поисковый запрос. Диапазон уточните на сайте.';
       }
+      price_filter_note = 'Бюджет в URL не подтверждён — в поисковую фразу не добавлялся.';
     }
+  }
+
+  if (acceptsQuery && (!phrase || !String(phrase).trim())) {
+    filter_details.push({
+      kind: 'info',
+      field: 'query',
+      text: 'Поисковая фраза пуста — открывается сайт без подстановки запроса.',
+    });
+  } else if (!acceptsQuery) {
+    filter_details.push({
+      kind: 'info',
+      field: 'query',
+      text: 'Шаблон без поискового параметра — переход на витрину/каталог, не страница поиска по запросу.',
+    });
+  }
+
+  const sort = applyPriceSort(source, url, priceSort);
+  url = sort.url;
+  filter_details = filter_details.concat(sort.filter_details || []);
+  const delivery = applyDeliveryPreference(source, url, deliveryPreference, {
+    price_sort: priceSort,
+    prefer_cheaper: preferCheaper,
+  });
+  url = delivery.url;
+  filter_details = filter_details.concat(delivery.filter_details || []);
+  const applied_filters = (price.applied_filters || []).slice();
+  if (sort.sort_price_asc_applied) applied_filters.push('sort_price_asc');
+  if (sort.sort_price_desc_applied) applied_filters.push('sort_price_desc');
+  if (delivery.delivery_fastest_applied) {
+    applied_filters.push(
+      delivery.delivery_fastest_kind === 'sort' ? 'delivery_fastest_sort' : 'delivery_fastest_filter'
+    );
   }
 
   const safe = safeHttpsUrl(url);
@@ -446,8 +690,22 @@ function buildUrl(source, parsed) {
     budget_in_query,
     price_filter_applied: price.price_filter_applied,
     price_filter_note,
+    price_sort: sort.price_sort || priceSort,
+    sort_price_asc_applied: !!sort.sort_price_asc_applied,
+    sort_price_desc_applied: !!sort.sort_price_desc_applied,
+    sort_price_asc_note: sort.sort_price_asc_applied ? sort.sort_price_note : (
+      priceSort === PRICE_SORT_ASC ? sort.sort_price_note : null
+    ),
+    sort_price_desc_note: sort.sort_price_desc_applied ? sort.sort_price_note : (
+      priceSort === PRICE_SORT_DESC ? sort.sort_price_note : null
+    ),
+    sort_price_note: sort.sort_price_note,
+    delivery_preference: delivery.delivery_preference,
+    delivery_fastest_applied: !!delivery.delivery_fastest_applied,
+    delivery_fastest_kind: delivery.delivery_fastest_kind,
+    delivery_note: delivery.delivery_note,
     filter_details,
-    applied_filters: price.applied_filters || [],
+    applied_filters,
     in_query_filters: inQuery,
     unsupported_filters: unsupported,
     verification_level: source.price_filter_verified
@@ -458,7 +716,13 @@ function buildUrl(source, parsed) {
 
 async function search(input) {
   const parsed = input.parsed || {};
-  const phrase = phraseForSource(parsed);
+  const resolvedSort = resolvePriceSort(input || {});
+  const priceSort = resolvedSort.ok ? resolvedSort.priceSort : PRICE_SORT_DEFAULT;
+  const preferCheaper = priceSort === PRICE_SORT_ASC;
+  const deliveryPreference =
+    normalizeDeliveryPreference(input.delivery_preference || input.deliveryPreference)
+    || DELIVERY_PREFERENCE_ANY;
+  const phrase = parsed.search_phrase || parsed.raw_query || '';
   if (!phrase) {
     return { provider: 'links', items: [] };
   }
@@ -467,7 +731,18 @@ async function search(input) {
   for (const source of input.sources || []) {
     if (!source || source.verified !== true) continue;
     try {
-      const built = buildUrl(source, parsed);
+      const built = buildUrl(source, parsed, {
+        price_sort: priceSort,
+        prefer_cheaper: preferCheaper,
+        delivery_preference: deliveryPreference,
+      });
+      const acceptsQuery = String(source.url_template || '').includes('{q}');
+      const usedPhrase = built.search_phrase_used || phraseForSource(parsed, source) || phrase;
+      let linkKind = source.link_kind || null;
+      if (!acceptsQuery && !linkKind) linkKind = 'store_entry';
+      if (acceptsQuery && (!usedPhrase || !String(usedPhrase).trim()) && !linkKind) {
+        linkKind = 'store_entry';
+      }
       items.push({
         id: source.id,
         name: source.name,
@@ -478,7 +753,7 @@ async function search(input) {
         trust_level: source.trust_level || null,
         source_type: source.source_type || source.type,
         registry_id: source.registry_id || null,
-        link_kind: source.link_kind || null,
+        link_kind: linkKind,
         link_label: source.link_label || null,
         own_brand: !!source.own_brand,
         display_group: source.display_group || null,
@@ -488,9 +763,19 @@ async function search(input) {
         price_note: 'Цена на сайте',
         price_filter_applied: built.price_filter_applied,
         price_filter_note: built.price_filter_note,
+        price_sort: built.price_sort,
+        sort_price_asc_applied: !!built.sort_price_asc_applied,
+        sort_price_desc_applied: !!built.sort_price_desc_applied,
+        sort_price_asc_note: built.sort_price_asc_note,
+        sort_price_desc_note: built.sort_price_desc_note,
+        sort_price_note: built.sort_price_note,
+        delivery_preference: built.delivery_preference,
+        delivery_fastest_applied: !!built.delivery_fastest_applied,
+        delivery_fastest_kind: built.delivery_fastest_kind,
+        delivery_note: built.delivery_note,
         budget_in_query: !!built.budget_in_query,
-        search_phrase_used: built.search_phrase_used || phrase,
-        phrase_accepts_query: String(source.url_template || '').includes('{q}'),
+        search_phrase_used: usedPhrase,
+        phrase_accepts_query: acceptsQuery && !!(usedPhrase && String(usedPhrase).trim()),
         filter_details: built.filter_details,
         applied_filters: built.applied_filters,
         in_query_filters: built.in_query_filters,
@@ -525,6 +810,8 @@ module.exports = {
   TYPE_LABELS,
   normalizeRange,
   applyPriceFilters,
+  applySortPriceAsc,
+  applyPriceSort,
   buildUrl,
   formatBudgetInQuery,
   phraseForSource,

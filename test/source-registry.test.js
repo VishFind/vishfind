@@ -59,11 +59,12 @@ test('Dior/AMIRI — официальный ориентир + не только
     assert.ok(hasOfficial, brand + ' needs official entry');
     assert.ok(
       ids.some((id) =>
-        ['brandshop', 'peak_concept', 'tsum_collect', 'spin4spin', 'lamoda_ru'].includes(id)
+        ['brandshop', 'peak_concept', 'spin4spin', 'lamoda_ru'].includes(id)
       ),
       brand + ' needs trusted RU seller path'
     );
     assert.ok(!ids.includes('the_cultt'), 'CULTT не в активной выдаче без разрешения');
+    assert.ok(!ids.includes('tsum_collect') && !ids.includes('tsum_ru'), 'TSUM исключён продуктово');
     assert.ok(!ids.includes('ozon') || ids.indexOf('ozon') > 2, brand + ' ozon not first');
   }
 });
@@ -75,11 +76,13 @@ test('LIMÉ и MAAG выбираются по собственному брен�
   assert.ok(maag.selected.some((s) => s.id === 'maag'));
 });
 
-test('временно ограниченные OSKELLY/Luxxy/CULTT не в активной выдаче', () => {
+test('временно ограниченные OSKELLY/Luxxy/CULTT/TSUM не в активной выдаче', () => {
   const sel = selectSources({ search_phrase: 'сумка' }, { maxSources: 20 });
   assert.ok(!sel.selected.some((s) => s.id === 'oskelly'));
   assert.ok(!sel.selected.some((s) => s.id === 'luxxy'));
   assert.ok(!sel.selected.some((s) => s.id === 'the_cultt'));
+  assert.ok(!sel.selected.some((s) => s.id === 'tsum_collect'));
+  assert.ok(!sel.selected.some((s) => s.id === 'tsum_ru'));
 });
 
 test('политика: HTML product только documented_allowed', () => {
@@ -87,5 +90,6 @@ test('политика: HTML product только documented_allowed', () => {
   assert.equal(policy.htmlProductFetchAllowed(policy.findById('the_cultt')), false);
   assert.equal(policy.htmlProductFetchAllowed(policy.findById('tsum_collect')), false);
   assert.equal(policy.outboundLinkAllowed(policy.findById('the_cultt')), false);
-  assert.equal(policy.outboundLinkAllowed(policy.findById('tsum_collect')), true);
+  assert.equal(policy.outboundLinkAllowed(policy.findById('tsum_collect')), false);
+  assert.equal(policy.outboundLinkAllowed(policy.findById('tsum_ru')), false);
 });

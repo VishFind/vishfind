@@ -235,12 +235,29 @@
       "brands": [],
       "delivery_to_ru": "confirmed",
       "data_mode": "none",
-      "connection_status": "identity_checked",
+      "connection_status": "temporarily_limited",
       "trust_level": "reseller_described",
       "trust_basis": "Известный российский универмаг/e-com; авторизация брендов не проверена поштучно.",
-      "checked_at": "2026-10-27",
+      "checked_at": "2026-10-28",
       "url_template": null,
-      "adapter_ref": null
+      "adapter_ref": null,
+      "blocker": "Исключён из активной выдачи по решению владельца проекта",
+      "product_exclusion_reason": "Исключён из активной выдачи по решению владельца проекта",
+      "usage_policy": {
+        "html_product_fetch": "restricted",
+        "outbound_link": "restricted",
+        "ordinary_link": "restricted",
+        "web_search_display": "restricted",
+        "search_title": "restricted",
+        "search_snippet": "restricted",
+        "web_fetch": "restricted",
+        "ollama_web_fetch": "restricted",
+        "images": "restricted",
+        "product_price": "restricted",
+        "product_image": "restricted",
+        "note": "Продуктовое отключение владельца (не юридический запрет). Не в selectSources, official extras, fallback, web_results, HTML/fetch/цены/фото.",
+        "checked_at": "2026-10-28"
+      }
     },
     {
       "id": "goldapple_ru",
@@ -861,7 +878,7 @@
       "brands": [],
       "delivery_to_ru": "confirmed",
       "data_mode": "search_link",
-      "connection_status": "search_link",
+      "connection_status": "temporarily_limited",
       "trust_level": "reseller_described",
       "trust_basis": "Ресейл АО «М Коллект» (collect.tsum.ru/terms). Заявлена проверка подлинности; не 100% гарантия каждого лота.",
       "trust_links": [
@@ -870,13 +887,15 @@
         "https://collect.tsum.ru/men/catalog"
       ],
       "delivery_note": "Доставка заявлена на сайте; не финальная стоимость.",
-      "checked_at": "2026-10-27",
+      "checked_at": "2026-10-28",
       "url_template": "https://collect.tsum.ru/women/catalog",
       "link_label": "Каталог TSUM Collect (поисковый URL не стабилизирован)",
       "product_search_url": null,
       "product_parse": null,
       "product_live": "policy_disabled",
-      "product_live_note": "HTML-сбор отключён. Обычный переход на каталог отделён от копирования контента.",
+      "product_live_note": "HTML-сбор отключён ранее (terms 4.6). Активная выдача и переходы отключены продуктовым решением владельца.",
+      "blocker": "Исключён из активной выдачи по решению владельца проекта",
+      "product_exclusion_reason": "Исключён из активной выдачи по решению владельца проекта",
       "terms_quote": {
         "url": "https://collect.tsum.ru/terms",
         "checked_at": "2026-10-27",
@@ -887,22 +906,22 @@
       },
       "usage_policy": {
         "html_product_fetch": "restricted",
-        "outbound_link": "basis_unset",
-        "ordinary_link": "basis_unset",
-        "web_search_display": "basis_unset",
-        "search_title": "basis_unset",
+        "outbound_link": "restricted",
+        "ordinary_link": "restricted",
+        "web_search_display": "restricted",
+        "search_title": "restricted",
         "search_snippet": "restricted",
         "web_fetch": "restricted",
         "ollama_web_fetch": "restricted",
         "images": "restricted",
         "product_price": "restricted",
         "product_image": "restricted",
-        "note": "Проверены collect.tsum.ru/terms (не tsum.ru). Цитата 4.6 сохранена в terms_quote. Переход basis_unset ≠ documented_allowed на сбор.",
+        "note": "Продуктовое отключение владельца (не юридический запрет). terms_quote §4.6 сохранён отдельно. Не в selectSources, official extras, fallback, web_results, HTML/fetch/цены/фото.",
         "basis_urls": [
           "https://collect.tsum.ru/terms",
           "https://collect.tsum.ru/robots.txt"
         ],
-        "checked_at": "2026-10-27"
+        "checked_at": "2026-10-28"
       },
       "adapter_ref": "tsum_collect"
     },
@@ -926,8 +945,8 @@
       ],
       "delivery_note": "По РФ 2–3 дня СДЭК (FAQ). Примерка МКАД — платная услуга.",
       "checked_at": "2026-10-27",
-      "url_template": "https://spin4spin.com/catalog",
-      "link_label": "Каталог SPIN4SPIN",
+      "url_template": "https://spin4spin.com/search?q={q}",
+      "link_label": "Поиск SPIN4SPIN",
       "product_live": "none",
       "product_live_note": "HTML product не подключён (basis_unset). Переход без сбора каталога.",
       "usage_policy": {

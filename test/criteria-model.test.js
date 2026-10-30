@@ -46,8 +46,11 @@ test('merge: ручной budget_min не теряется и приоритет
   assert.equal(out.budget_max, 15000);
   assert.deepEqual(out.colors, ['чёрный', 'зелёный']);
   assert.equal(out.category, 'куртка');
-  assert.match(out.search_phrase, /чёрный/);
-  assert.match(out.search_phrase, /зелёный/);
+  assert.match(out.search_phrase, /чёрн/i);
+  // оба цвета из ручных критериев сохраняются в короткой фразе
+  assert.match(out.search_phrase, /зелён/i);
+  assert.ok(!/чёрный куртка/i.test(out.search_phrase));
+  assert.deepEqual(out.colors, ['чёрный', 'зелёный']);
 });
 
 test('merge: clear budget_min не возвращает цену из текста', () => {
@@ -94,7 +97,7 @@ test('normalizeRange: 0 не отбрасывается как пустое', ()
   assert.equal(r.invalid, false);
 });
 
-test('Ozon: без native price — бюджет словами в {q}, не как URL-фильтр', async () => {
+test('Ozon: без native price — бюджет не пишется в {q}', async () => {
   const ozon = sources.find((s) => s.id === 'ozon');
   assert.equal(ozon.price_filter_verified, false);
   const out = await linksSearch({
@@ -102,19 +105,16 @@ test('Ozon: без native price — бюджет словами в {q}, не к�
     sources: [ozon],
   });
   const item = out.items[0];
-  // Не подтверждённый native-фильтр площадки.
   assert.equal(item.price_filter_applied, false);
   assert.ok(!/currency_price=/.test(item.url));
   assert.ok(!(item.applied_filters || []).includes('price_min'));
   assert.ok(!(item.applied_filters || []).includes('price_max'));
-  // Контракт: RUB + {q} → бюджет в поисковой фразе.
-  assert.equal(item.budget_in_query, true);
-  assert.ok((item.in_query_filters || []).includes('price'));
-  assert.match(item.search_phrase_used || '', /5000/);
-  assert.match(item.search_phrase_used || '', /15000/);
-  assert.match(decodeURIComponent(item.url), /от\s*5000|до\s*15000|рубл/i);
+  assert.equal(item.budget_in_query, false);
+  assert.ok(!(item.in_query_filters || []).includes('price'));
+  assert.equal(item.search_phrase_used, 'куртка');
+  assert.ok(!/5000|15000|рубл/i.test(item.search_phrase_used || ''));
   assert.ok(
-    (item.filter_details || []).some((d) => d && d.kind === 'in_query' && d.field === 'price')
+    (item.filter_details || []).some((d) => d && /не подтвержд/i.test(d.text || ''))
   );
 });
 

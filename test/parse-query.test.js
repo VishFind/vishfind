@@ -145,9 +145,10 @@ test('значимые слова винтаж / кожаная / oversize со�
   assert.match(p.rest || '', /кожан/i);
   assert.match(p.rest || '', /винтаж/i);
   assert.match(p.rest || '', /oversize/i);
-  assert.match(p.search_phrase, /кожан/i);
-  assert.match(p.search_phrase, /винтаж/i);
-  assert.match(p.search_phrase, /oversize/i);
+  // Короткая фраза: тип + до 2 сильных признаков (мелочи кроя не тащим).
+  assert.match(p.search_phrase, /кож/i);
+  assert.match(p.search_phrase, /куртка/i);
+  assert.ok(/винтаж|оверсайз|oversize/i.test(p.search_phrase));
 });
 
 test('бюджет не становится размером и размер не становится бюджетом', () => {

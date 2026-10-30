@@ -89,7 +89,9 @@ test('после слияния остальные поля сохраняютс
 
   assert.equal(out.category, 'куртка');
   assert.equal(out.rest, 'винтаж');
-  assert.ok(out.search_phrase && out.search_phrase.includes('чёрный'));
+  assert.ok(out.search_phrase && /чёрн/i.test(out.search_phrase));
   assert.ok(out.search_phrase.includes('куртка'));
   assert.ok(out.search_phrase.includes('винтаж'));
+  // согласованная форма, не «чёрный куртка»
+  assert.ok(!/чёрный куртка/i.test(out.search_phrase));
 });

@@ -27,7 +27,7 @@ test('клиент: компактное пояснение под резуль�
   assert.match(js, /renderResultsDisclaimer/);
   assert.match(js, /VishFind подбирает ссылки на сторонние сайты/);
   assert.match(js, /проверяйте у продавца/);
-  assert.match(js, /Что передано/);
+  assert.match(js, /Что распозналось/);
 });
 
 test('сервер: web enrich только при явном web_search boolean true', () => {

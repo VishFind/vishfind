@@ -50,12 +50,17 @@
   let ebayConfigured = false;
   /** Серверная возможность WEB_SEARCH (не включает поиск сама по себе). */
   let webSearchServerEnabled = false;
+  function criteriaMountOpts() {
+    return {};
+  }
   let lastData = null;
   let lastArgs = null;
   let searchSeq = 0;
   let activeAbort = null;
   let userScrolledDuringSearch = false;
   let scrollGuardBound = false;
+  /** После успешного vision не шлём image повторно при смене бюджета/сортировки. */
+  let photoAnalysisDone = false;
   /** Клиентский фильтр групп уже полученных ссылок: all|official|reseller|other|marketplace */
   let linkGroupFilter = 'all';
 
@@ -163,6 +168,7 @@
     input.value = '';
     lastData = null;
     lastArgs = null;
+    photoAnalysisDone = false;
     pickedOffers = [];
     renderCompare();
 
@@ -170,7 +176,7 @@
       try { criteriaApi.destroy(); } catch (_) { /* ignore */ }
     }
     if (Criteria && userCriteriaHost) {
-      criteriaApi = Criteria.mount(userCriteriaHost, Criteria.emptyState(), {});
+      criteriaApi = Criteria.mount(userCriteriaHost, Criteria.emptyState(), criteriaMountOpts());
     } else {
       criteriaApi = null;
     }
@@ -304,47 +310,102 @@
     return item;
   }
 
-  function renderRecognizedSummary(p) {
+  function renderRecognizedSummary(p, data) {
     const panel = el('div', 'criteria-panel glass recog-summary');
-    panel.appendChild(el('h2', null, 'Распознанные признаки'));
-    panel.appendChild(
-      el(
-        'p',
-        'understood-phrase',
-        'Технический разбор запроса. Менять фильтры удобнее чипсами над строкой поиска — этот блок сам не открывается после поиска.'
-      )
-    );
+    panel.appendChild(el('h2', null, 'Что распозналось'));
+
+    panel.appendChild(el('p', 'source-passed-label', '1. Распознано и выбрано'));
     const line = summaryLine(p);
-    panel.appendChild(el('p', 'criterion-value', line));
-    if (p.search_phrase) {
-      const phraseRow = el('div', 'criteria-actions');
-      phraseRow.appendChild(el('p', 'understood-phrase', 'Поисковая фраза: «' + p.search_phrase + '»'));
+    panel.appendChild(el('p', 'criterion-value', line || 'Нет структурированных признаков.'));
+    if (data && data.photo_used && data.photo) {
+      const fullBits = [
+        data.photo.description,
+        data.photo.hardware_and_details,
+        data.photo.closure,
+        data.photo.pockets,
+        data.photo.fit,
+        data.photo.pattern,
+      ].filter(Boolean);
+      if (fullBits.length) {
+        panel.appendChild(
+          el('p', 'understood-phrase', 'Полный разбор фото: ' + fullBits.join('; '))
+        );
+      }
+    }
+    const ps = (data && data.price_sort) || (p && p.price_sort) || 'default';
+    if (ps === 'asc') {
+      panel.appendChild(el('p', 'understood-phrase', 'Выбрана сортировка: сначала дешевле (не на всех площадках).'));
+    } else if (ps === 'desc') {
+      panel.appendChild(el('p', 'understood-phrase', 'Выбрана сортировка: сначала дороже (не на всех площадках).'));
+    }
+
+    panel.appendChild(el('p', 'source-passed-label', '2. Фактическая поисковая фраза'));
+    const ru = (p && p.search_phrase) || '';
+    const en = (data && data.search_phrase_en) || (p && p.search_phrase_en) || '';
+    if (ru) {
+      panel.appendChild(el('p', 'understood-phrase', 'RU: «' + ru + '»'));
+    } else {
+      panel.appendChild(el('p', 'understood-phrase', 'RU-фраза не сформирована.'));
+    }
+    if (en) {
+      panel.appendChild(el('p', 'understood-phrase', 'EN (для eBay): «' + en + '»'));
+    }
+    const enNote = (data && data.search_phrase_en_note) || (p && p.search_phrase_en_note);
+    if (enNote) panel.appendChild(el('p', 'understood-phrase', enNote));
+
+    panel.appendChild(el('p', 'source-passed-label', '3. Передача на площадки'));
+    const sources = data && Array.isArray(data.sources) ? data.sources : [];
+    if (!sources.length) {
+      panel.appendChild(el('p', 'understood-phrase', 'Нет подготовленных переходов.'));
+    } else {
+      const ul = el('ul', 'source-filter-list');
+      sources.forEach((s) => {
+        const name = s.name || s.id || 'Площадка';
+        const used = s.search_phrase_used ? ' фраза «' + s.search_phrase_used + '».' : '';
+        ul.appendChild(
+          el('li', null, name + ': ' + sourceTransferSummary(s) + used)
+        );
+      });
+      panel.appendChild(ul);
+      panel.appendChild(
+        el(
+          'p',
+          'understood-phrase',
+          'Выбранная настройка не означает, что она применена на всех площадках — смотрите строки выше.'
+        )
+      );
+    }
+
+    const actions = el('div', 'criteria-actions');
+    if (ru) {
       const copyBtn = el('button', 'btn btn-ghost', 'Копировать фразу');
       copyBtn.type = 'button';
       copyBtn.addEventListener('click', async () => {
         try {
-          await navigator.clipboard.writeText(p.search_phrase);
+          await navigator.clipboard.writeText(ru);
           setStatus('Фраза скопирована.', 'ok');
         } catch (_) {
           setStatus('Не удалось скопировать фразу.', 'error');
         }
       });
-      phraseRow.appendChild(copyBtn);
-      panel.appendChild(phraseRow);
+      actions.appendChild(copyBtn);
     }
     const apply = el('button', 'btn btn-ghost', 'Подставить в критерии');
     apply.type = 'button';
     apply.addEventListener('click', () => {
       if (Criteria && userCriteriaHost) {
         if (criteriaApi && criteriaApi.destroy) criteriaApi.destroy();
-        criteriaApi = Criteria.mount(userCriteriaHost, Criteria.stateFromParsed(p), {});
+        const st = Criteria.stateFromParsed(p);
+        st.delivery_preference = 'any';
+        criteriaApi = Criteria.mount(userCriteriaHost, st, criteriaMountOpts());
       }
       setStatus('Критерии обновлены из распознавания. Нажмите «Искать».', 'ok');
       if (userCriteriaHost) {
         userCriteriaHost.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
       }
     });
-    panel.appendChild(apply);
+    actions.appendChild(apply);
+    panel.appendChild(actions);
     return panel;
   }
 
@@ -528,6 +589,7 @@
 
   function clearPhoto() {
     imageDataUrl = null;
+    photoAnalysisDone = false;
     if (fileInput) fileInput.value = '';
     if (preview) preview.hidden = true;
     if (previewImg) previewImg.removeAttribute('src');
@@ -547,6 +609,7 @@
     try {
       if (photoMeta) photoMeta.textContent = 'Загрузка';
       setStatus('Загрузка фото…');
+      photoAnalysisDone = false;
       imageDataUrl = await resizeImage(file);
       previewImg.src = imageDataUrl;
       preview.hidden = false;
@@ -1076,9 +1139,9 @@
 
   function openLinkLabel(source) {
     const kind = source && source.link_kind;
-    if (kind === 'official_store_entry') return 'Официальный сайт';
-    if (kind === 'store_entry') return 'Открыть каталог';
-    if (source && source.phrase_accepts_query === false) return 'Открыть каталог';
+    if (kind === 'official_store_entry') return 'Открыть сайт';
+    if (kind === 'store_entry') return 'Открыть сайт';
+    if (source && source.phrase_accepts_query === false) return 'Открыть сайт';
     return 'Открыть поиск';
   }
 
@@ -1141,76 +1204,22 @@
     }
   }
 
-  function renderPassedDetails(source) {
+  function sourceTransferSummary(source) {
     const details = Array.isArray(source.filter_details) ? source.filter_details : [];
     const applied = details.filter((d) => d && d.kind === 'applied');
     const inQuery = details.filter((d) => d && d.kind === 'in_query');
-    const manual = details.filter((d) => d && (d.kind === 'manual' || d.kind === 'error' || d.kind === 'info'));
-    const isVitrine =
-      source.link_kind === 'store_entry'
-      || source.link_kind === 'official_store_entry'
-      || source.phrase_accepts_query === false;
-
-    const more = el('details', 'source-filters source-passed');
-    more.appendChild(el('summary', null, 'Что передано'));
-    const wrap = el('div', 'source-passed-body');
-
-    if (isVitrine && !applied.length && !(source.phrase_accepts_query === true)) {
-      wrap.appendChild(
-        el(
-          'p',
-          'source-note',
-          'Открывается каталог. Запрос и критерии автоматически не передаются.'
-        )
-      );
+    const manual = details.filter((d) => d && (d.kind === 'manual' || d.kind === 'error'));
+    const infos = details.filter((d) => d && d.kind === 'info');
+    const bits = [];
+    if (applied.length) bits.push('фильтры: ' + applied.map((d) => d.text).join('; '));
+    if (inQuery.length) bits.push('в фразе: ' + inQuery.map((d) => d.text).join('; '));
+    if (manual.length) bits.push('на сайте: ' + manual.map((d) => d.text).join('; '));
+    infos.forEach((d) => { if (d.text) bits.push(d.text); });
+    if (source.sort_price_note && !applied.some((d) => /сортиров/i.test(d.text || ''))) {
+      bits.push(source.sort_price_note);
     }
-
-    if (applied.length) {
-      wrap.appendChild(el('p', 'source-passed-label', 'Передано фильтрами'));
-      const ul = el('ul', 'source-filter-list');
-      applied.forEach((d) => {
-        if (d && d.text) ul.appendChild(el('li', 'is-applied', d.text));
-      });
-      wrap.appendChild(ul);
-    }
-
-    if (inQuery.length) {
-      wrap.appendChild(el('p', 'source-passed-label', 'Добавлено в поисковую фразу'));
-      const ul = el('ul', 'source-filter-list');
-      inQuery.forEach((d) => {
-        if (d && d.text) ul.appendChild(el('li', 'is-in_query', d.text));
-      });
-      wrap.appendChild(ul);
-    }
-
-    const needManual = manual.filter((d) => d && d.kind !== 'info');
-    if (needManual.length) {
-      wrap.appendChild(el('p', 'source-passed-label', 'Нужно уточнить на сайте'));
-      const ul = el('ul', 'source-filter-list');
-      needManual.forEach((d) => {
-        if (d && d.text) ul.appendChild(el('li', 'is-manual', d.text));
-      });
-      wrap.appendChild(ul);
-    }
-
-    const infos = manual.filter((d) => d && d.kind === 'info');
-    infos.forEach((d) => {
-      if (d && d.text) wrap.appendChild(el('p', 'source-note', d.text));
-    });
-
-    if (!wrap.childNodes.length) {
-      wrap.appendChild(el('p', 'source-note', 'Дополнительные критерии в ссылку не добавлялись.'));
-    }
-
-    const ver = source.verification_level;
-    if (ver === 'price_url_verified') {
-      wrap.appendChild(el('p', 'source-note', 'Фильтр цены в URL ранее подтверждён.'));
-    } else if (ver === 'base_url_only') {
-      wrap.appendChild(el('p', 'source-note', 'Базовый переход; штатные фильтры кроме указанных не подтверждены.'));
-    }
-
-    more.appendChild(wrap);
-    return more;
+    if (!bits.length) bits.push('дополнительные критерии в ссылку не добавлялись');
+    return bits.join(' · ');
   }
 
   function renderSourceCard(source, thing, parsed) {
@@ -1223,10 +1232,12 @@
     titles.appendChild(el('p', 'source-name', name));
     const metaBits = [];
     if (source.type_label || source.type) metaBits.push(source.type_label || source.type);
-    if (source.link_label) metaBits.push(source.link_label);
-    else if (source.link_kind === 'store_entry') metaBits.push('витрина магазина');
-    else if (source.link_kind === 'official_store_entry') metaBits.push('официальный сайт');
-    titles.appendChild(el('p', 'source-meta', metaBits.join(' · ')));
+    if (source.link_kind === 'store_entry' || source.phrase_accepts_query === false) {
+      metaBits.push('переход на сайт');
+    } else if (source.link_kind === 'official_store_entry') {
+      metaBits.push('официальный сайт');
+    }
+    if (metaBits.length) titles.appendChild(el('p', 'source-meta', metaBits.join(' · ')));
     head.appendChild(titles);
     card.appendChild(head);
     const url = safeUrl(source.url);
@@ -1277,28 +1288,7 @@
     card.appendChild(actions);
     if (!url && source.error) {
       card.appendChild(el('p', 'source-note is-error', source.error));
-      return card;
     }
-
-    const details = Array.isArray(source.filter_details) ? source.filter_details : [];
-    const applied = details.filter((d) => d && d.kind === 'applied');
-    if (source.price_filter_applied || applied.length) {
-      card.appendChild(
-        el(
-          'p',
-          'source-note is-applied',
-          applied.length
-            ? applied.map((d) => d.text).join(' ')
-            : 'В ссылку добавлен проверенный фильтр цены.'
-        )
-      );
-    } else if (source.budget_in_query) {
-      card.appendChild(
-        el('p', 'source-note', 'Бюджет добавлен в поисковый запрос. Диапазон уточните на сайте.')
-      );
-    }
-
-    card.appendChild(renderPassedDetails(source));
     return card;
   }
 
@@ -1457,14 +1447,14 @@
     btn.setAttribute('aria-expanded', 'false');
     const drawer = el('div', 'recog');
     drawer.hidden = true;
-    if (aiEnabled && data.photo_used) {
+    if (aiEnabled && data && data.photo_used) {
       const photoWrap = el('div', 'understood glass');
       photoWrap.appendChild(el('h2', null, 'Что видно на фото'));
       const photoBlock = renderPhotoAttrs(data.photo);
       if (photoBlock) photoWrap.appendChild(photoBlock);
       drawer.appendChild(photoWrap);
     }
-    drawer.appendChild(renderRecognizedSummary(p));
+    drawer.appendChild(renderRecognizedSummary(p, data));
     btn.addEventListener('click', () => {
       const open = drawer.hidden;
       drawer.hidden = !open;
@@ -1476,14 +1466,58 @@
     return wrap;
   }
 
+  function canSimplifyQuery(p, data) {
+    if (!p) return false;
+    const rest = String(p.rest || '');
+    if (rest.length > 24) return true;
+    if (/карман|молни|застёж|застеж|шов|воротник|фурнитур/i.test(rest)) return true;
+    const photo = data && data.photo;
+    if (photo && (photo.hardware_and_details || photo.pockets || photo.closure)) {
+      // Есть детали фото, а фраза всё ещё длиннее компактной.
+      const phrase = String(p.search_phrase || '');
+      if (phrase.split(/\s+/).length > 4) return true;
+    }
+    return false;
+  }
+
+  function simplifyAndResearch() {
+    if (!lastData || !lastData.parsed) {
+      setStatus('Нет текущего результата для упрощения.', 'error');
+      return;
+    }
+    const p = lastData.parsed;
+    if (!canSimplifyQuery(p, lastData)) {
+      setStatus('Упрощать уже нечего — фраза и так короткая.', 'ok');
+      return;
+    }
+    if (!Criteria || !userCriteriaHost) return;
+    if (criteriaApi && criteriaApi.destroy) criteriaApi.destroy();
+    const next = Criteria.stateFromParsed(p);
+    // Убираем второстепенный хвост, сохраняем тип/бренд/цвет/бюджет/сортировку.
+    next.rest = '';
+    next.materials = [];
+    next.styles = [];
+    next.fits = [];
+    next.conditions = [];
+    next.cleared = next.cleared || {};
+    next.cleared.rest = true;
+    next.cleared.features = true;
+    next.delivery_preference = 'any';
+    const ps = lastData.price_sort || next.price_sort || 'default';
+    next.price_sort = ps === 'asc' || ps === 'desc' ? ps : 'default';
+    next.prefer_cheaper = next.price_sort === 'asc';
+    criteriaApi = Criteria.mount(userCriteriaHost, next, criteriaMountOpts());
+    // Повторный поиск без повторного vision.
+    runSearch(null, { skipPhoto: true, attributes_priority: true });
+  }
+
   function renderResultsDisclaimer() {
     const note = el('p', 'results-disclaimer');
     note.textContent =
       'VishFind подбирает ссылки на сторонние сайты. '
       + 'Наличие, актуальную цену, подлинность товара '
       + 'и условия покупки проверяйте у продавца. '
-      + 'Критерии могут передаваться фильтрами или текстом — '
-      + 'подробнее в разделе «Что передано».';
+      + 'Как критерии попали в ссылки — в блоке «Что распозналось?».';
     return note;
   }
 
@@ -1592,6 +1626,12 @@
       });
     });
     secondary.appendChild(saveQuery);
+    if (canSimplifyQuery(p, data)) {
+      const simplifyBtn = el('button', 'btn btn-ghost', 'Упростить запрос');
+      simplifyBtn.type = 'button';
+      simplifyBtn.addEventListener('click', () => simplifyAndResearch());
+      secondary.appendChild(simplifyBtn);
+    }
     secondary.appendChild(renderRecognition(p, data));
     resultsBody.appendChild(secondary);
 
@@ -1708,7 +1748,7 @@
         restored.cleared.features = true;
       }
       if (!restored.budget_min && !restored.budget_max) restored.cleared.price = true;
-      criteriaApi = Criteria.mount(userCriteriaHost, restored, {});
+      criteriaApi = Criteria.mount(userCriteriaHost, restored, criteriaMountOpts());
     }
     if (item.type === 'photo' && item.thumb && aiEnabled) {
       imageDataUrl = item.thumb;
@@ -1911,7 +1951,8 @@
     armScrollGuard();
     pickedOffers = [];
     renderCompare();
-    const analyzingPhoto = !!(imageDataUrl && aiEnabled);
+    const skipPhoto = !!(override && override.skipPhoto);
+    const analyzingPhoto = !!(imageDataUrl && aiEnabled && !skipPhoto && !photoAnalysisDone);
     const sentPhoto = analyzingPhoto;
     setStatus(analyzingPhoto ? 'Смотрим фото и готовим переходы' : 'Формируем переходы');
     showSkeleton();
@@ -1927,11 +1968,23 @@
     try {
       const payload = { query };
       if (attributes) payload.attributes = attributes;
-      if (attributesPriority) payload.attributes_priority = true;
+      if (attributesPriority || (override && override.attributes_priority)) {
+        payload.attributes_priority = true;
+      }
       if (clearAttributes.length) payload.clear_attributes = clearAttributes;
-      if (imageDataUrl && aiEnabled) payload.image = imageDataUrl;
+      // Повторный разбор фото не запускаем при смене бюджета/сортировки/упрощении.
+      if (imageDataUrl && aiEnabled && !skipPhoto && !photoAnalysisDone) {
+        payload.image = imageDataUrl;
+      }
       // Opt-in: без галочки сервер не вызывает Ollama web_search.
       if (userWantsWebSearch()) payload.web_search = true;
+      if (criteriaApi) {
+        const ps = criteriaApi.price_sort || (criteriaApi.prefer_cheaper ? 'asc' : 'default');
+        if (ps && ps !== 'default') payload.price_sort = ps;
+        // Совместимость: asc также как prefer_cheaper.
+        if (ps === 'asc') payload.prefer_cheaper = true;
+        // delivery_preference не отправляем — вне пользовательского сценария.
+      }
 
       const r = await fetch('/api/search', {
         method: 'POST',
@@ -1961,6 +2014,18 @@
         if (criteriaApi && criteriaApi.destroy) criteriaApi.destroy();
         // Синхронизация с итогом сервера + «липкий» сброс, чтобы текст не вернул очищенные поля.
         const nextState = Criteria.stateFromParsed(data.parsed);
+        const fromApi = criteriaApi && criteriaApi.price_sort;
+        const fromResp = data.price_sort;
+        if (fromApi && fromApi !== 'default') nextState.price_sort = fromApi;
+        else if (fromResp) nextState.price_sort = fromResp;
+        else if ((criteriaApi && criteriaApi.prefer_cheaper) || data.prefer_cheaper) {
+          nextState.price_sort = 'asc';
+        } else {
+          nextState.price_sort = 'default';
+        }
+        nextState.prefer_cheaper = nextState.price_sort === 'asc';
+        nextState.delivery_preference = 'any';
+        if (sentPhoto || data.photo_used) photoAnalysisDone = true;
         nextState.cleared = {};
         const cleared = clearAttributes || [];
         if (cleared.some((k) => k === 'budget' || k === 'price')) {
@@ -1979,7 +2044,7 @@
           nextState.cleared.rest = true;
           nextState.cleared.features = true;
         }
-        criteriaApi = Criteria.mount(userCriteriaHost, nextState, {});
+        criteriaApi = Criteria.mount(userCriteriaHost, nextState, criteriaMountOpts());
       }
       renderTechDebug(data, {
         query,
@@ -2243,7 +2308,7 @@
   updateSavedCount();
   renderAdPlacement();
   if (Criteria && userCriteriaHost) {
-    criteriaApi = Criteria.mount(userCriteriaHost, Criteria.emptyState(), {});
+    criteriaApi = Criteria.mount(userCriteriaHost, Criteria.emptyState(), criteriaMountOpts());
   }
 
   submitBtn.addEventListener('click', runSearch);

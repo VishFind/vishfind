@@ -5,16 +5,34 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>О проекте — VishFind</title>
   <meta name="description" content="VishFind разбирает запрос и готовит переходы к поиску на сторонних сайтах. Цены, наличие и подлинность смотрите у продавца."/>
-  <link rel="icon" href="images/favicon.svg" type="image/svg+xml"/>
+  <link rel="icon" href="images/favicon.svg?v=20261028" type="image/svg+xml"/>
   <script>
     (function () {
+      var theme = 'light';
       try {
         var s = localStorage.getItem('vishfind-theme') || localStorage.getItem('isearch-theme');
-        var t = s || 'light';
-        document.documentElement.setAttribute('data-theme', t);
-      } catch (e) {
-        document.documentElement.setAttribute('data-theme', 'light');
-      }
+        if (s === 'dark' || s === 'light') theme = s;
+      } catch (e) {}
+      document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.classList.add('vf-boot');
+      try {
+        var seenKey = 'vishfind:welcome:seen:v1';
+        if (new URLSearchParams(location.search).get('welcome') === 'replay') {
+          sessionStorage.removeItem(seenKey);
+        }
+        if (sessionStorage.getItem(seenKey) === '1') return;
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          sessionStorage.setItem(seenKey, '1');
+          return;
+        }
+        document.documentElement.classList.add('is-intro', 'is-intro-lock');
+        window.setTimeout(function () {
+          if (document.documentElement.classList.contains('is-intro-done')) return;
+          if (document.querySelector('.welcome-splash')) return;
+          document.documentElement.classList.remove('is-intro', 'is-intro-lock', 'vf-boot');
+          document.documentElement.classList.add('is-intro-done');
+        }, 5600);
+      } catch (e2) {}
     })();
   </script>
   <link rel="stylesheet" href="css/fonts.css"/>
@@ -24,7 +42,10 @@
   <div class="bg" aria-hidden="true"></div>
   <header class="site-header">
     <div class="wrap glass">
-      <a class="brand" href="/">VishFind</a>
+      <a class="brand" href="/" aria-label="VishFind">
+        <img class="brand-logo brand-logo--light" src="images/logo-vishfind-light.png" alt="" width="180" height="64" decoding="async"/>
+        <img class="brand-logo brand-logo--dark" src="images/logo-vishfind-dark.png" alt="" width="180" height="64" decoding="async"/>
+      </a>
       <div class="header-right">
         <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="site-nav">Меню</button>
         <nav class="nav" id="site-nav" aria-label="Основное">
@@ -79,5 +100,7 @@
     </div>
   </footer>
   <script src="js/theme.js" defer></script>
+  <script src="js/welcome-scene-data.js" defer></script>
+  <script src="js/welcome-splash.js" defer></script>
 </body>
 </html>

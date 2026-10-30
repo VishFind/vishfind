@@ -96,6 +96,15 @@
     { id: 'features', label: 'Особенности' },
   ];
 
+  const PRICE_SORT_DEFAULT = 'default';
+  const PRICE_SORT_ASC = 'asc';
+  const PRICE_SORT_DESC = 'desc';
+  const PRICE_SORT_OPTIONS = [
+    { id: PRICE_SORT_DEFAULT, label: 'Без сортировки' },
+    { id: PRICE_SORT_ASC, label: 'Сначала дешевле' },
+    { id: PRICE_SORT_DESC, label: 'Сначала дороже' },
+  ];
+
   const KNOWN_BRANDS = (typeof window !== 'undefined' && Array.isArray(window.VISHFIND_BRANDS))
     ? window.VISHFIND_BRANDS.slice()
     : ['Nike', 'Adidas', 'Puma', 'Reebok', 'New Balance', 'Converse', 'Vans', "Levi's", 'Zara', 'H&M', 'Uniqlo', 'The North Face', 'Carhartt', 'Stone Island', 'Calvin Klein', 'Tommy Hilfiger'];
@@ -176,6 +185,20 @@
     return Number.isFinite(parseMoneyInput(raw));
   }
 
+  function normalizePriceSort(raw) {
+    if (raw === PRICE_SORT_ASC || raw === PRICE_SORT_DESC) return raw;
+    return PRICE_SORT_DEFAULT;
+  }
+
+  function resolvePriceSortFromInput(p) {
+    if (!p || typeof p !== 'object') return PRICE_SORT_DEFAULT;
+    if (p.price_sort != null && String(p.price_sort).trim() !== '') {
+      return normalizePriceSort(p.price_sort);
+    }
+    if (p.prefer_cheaper === true) return PRICE_SORT_ASC;
+    return PRICE_SORT_DEFAULT;
+  }
+
   function emptyState() {
     return {
       categories: [],
@@ -189,8 +212,15 @@
       budget_min: '',
       budget_max: '',
       rest: '',
+      price_sort: PRICE_SORT_DEFAULT,
+      prefer_cheaper: false,
+      delivery_preference: 'any',
       cleared: {},
     };
+  }
+
+  function normalizeDeliveryPreference(raw) {
+    return raw === 'fastest' ? 'fastest' : 'any';
   }
 
   function stateFromParsed(p) {
@@ -204,6 +234,11 @@
     if (p.budget_min != null && p.budget_min !== '') s.budget_min = String(p.budget_min);
     const max = p.budget_max != null ? p.budget_max : p.budget;
     if (max != null && max !== '') s.budget_max = String(max);
+    // price_sort не из текстового parse — сохраняется снаружи при remount.
+    // delivery_preference скрыт из UI и всегда any (старые значения не возвращаем).
+    s.price_sort = resolvePriceSortFromInput(p);
+    s.prefer_cheaper = s.price_sort === PRICE_SORT_ASC;
+    s.delivery_preference = 'any';
     return s;
   }
 
@@ -286,6 +321,7 @@
       || asList(state.brands).length
       || isMoneySet(state.budget_min)
       || isMoneySet(state.budget_max)
+      || normalizePriceSort(state.price_sort) !== PRICE_SORT_DEFAULT
       || asList(state.materials).length
       || asList(state.styles).length
       || asList(state.fits).length
@@ -315,11 +351,22 @@
     if (id === 'price') {
       const min = parseMoneyInput(state.budget_min);
       const max = parseMoneyInput(state.budget_max);
+      const sort = normalizePriceSort(state.price_sort);
+      const sortBit =
+        sort === PRICE_SORT_ASC ? 'сначала дешевле'
+          : sort === PRICE_SORT_DESC ? 'сначала дороже'
+            : '';
+      let budgetBit = '';
       if (Number.isFinite(min) && Number.isFinite(max)) {
-        return 'Цена: ' + min.toLocaleString('ru-RU') + '–' + max.toLocaleString('ru-RU') + ' ₽';
+        budgetBit = min.toLocaleString('ru-RU') + '–' + max.toLocaleString('ru-RU') + ' ₽';
+      } else if (Number.isFinite(max)) {
+        budgetBit = 'до ' + max.toLocaleString('ru-RU') + ' ₽';
+      } else if (Number.isFinite(min)) {
+        budgetBit = 'от ' + min.toLocaleString('ru-RU') + ' ₽';
       }
-      if (Number.isFinite(max)) return 'Цена: до ' + max.toLocaleString('ru-RU') + ' ₽';
-      if (Number.isFinite(min)) return 'Цена: от ' + min.toLocaleString('ru-RU') + ' ₽';
+      if (budgetBit && sortBit) return 'Цена: ' + budgetBit + ' · ' + sortBit;
+      if (budgetBit) return 'Цена: ' + budgetBit;
+      if (sortBit) return 'Цена: ' + sortBit;
       return 'Цена';
     }
     if (id === 'features') {
@@ -340,7 +387,13 @@
     if (id === 'color') return asList(state.colors).length > 0;
     if (id === 'size') return asList(state.sizes).length > 0;
     if (id === 'brand') return asList(state.brands).length > 0;
-    if (id === 'price') return isMoneySet(state.budget_min) || isMoneySet(state.budget_max);
+    if (id === 'price') {
+      return (
+        isMoneySet(state.budget_min)
+        || isMoneySet(state.budget_max)
+        || normalizePriceSort(state.price_sort) !== PRICE_SORT_DEFAULT
+      );
+    }
     if (id === 'features') {
       return !!(
         asList(state.materials).length
@@ -369,6 +422,9 @@
     state.fits = asList(state.fits);
     state.conditions = asList(state.conditions);
     if (!state.cleared || typeof state.cleared !== 'object') state.cleared = {};
+    state.price_sort = resolvePriceSortFromInput(state);
+    state.prefer_cheaper = state.price_sort === PRICE_SORT_ASC;
+    state.delivery_preference = 'any';
     const onChange = handlers && handlers.onChange ? handlers.onChange : () => {};
 
     let openId = null;
@@ -683,8 +739,14 @@
               delete state.cleared.price;
             } else state.cleared.price_max = true;
           }
-          if (!isMoneySet(state.budget_min) && !isMoneySet(state.budget_max)) {
+          if (
+            !isMoneySet(state.budget_min)
+            && !isMoneySet(state.budget_max)
+            && normalizePriceSort(state.price_sort) === PRICE_SORT_DEFAULT
+          ) {
             state.cleared.price = true;
+          } else {
+            delete state.cleared.price;
           }
           showErr(validatePrice(state));
           notify();
@@ -694,21 +756,51 @@
         [minInput, maxInput].forEach((inp) => {
           inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
         });
+        const sortLabel = el('p', 'criteria-group-label', 'Сортировка');
+        const sortList = el('div', 'criteria-options');
+        sortList.setAttribute('role', 'listbox');
+        sortList.setAttribute('aria-label', 'Сортировка по цене');
+        function paintSort() {
+          sortList.replaceChildren();
+          PRICE_SORT_OPTIONS.forEach((opt) => {
+            const on = normalizePriceSort(state.price_sort) === opt.id;
+            const btn = el('button', 'criteria-option' + (on ? ' is-on' : ''), opt.label);
+            btn.type = 'button';
+            btn.setAttribute('role', 'option');
+            btn.setAttribute('aria-selected', on ? 'true' : 'false');
+            btn.addEventListener('click', () => {
+              state.price_sort = opt.id;
+              state.prefer_cheaper = opt.id === PRICE_SORT_ASC;
+              if (opt.id !== PRICE_SORT_DEFAULT || isMoneySet(state.budget_min) || isMoneySet(state.budget_max)) {
+                delete state.cleared.price;
+              }
+              paintSort();
+              notify();
+            });
+            sortList.appendChild(btn);
+          });
+        }
         clearBtn.addEventListener('click', () => {
           state.budget_min = '';
           state.budget_max = '';
+          state.price_sort = PRICE_SORT_DEFAULT;
+          state.prefer_cheaper = false;
           state.cleared.price = true;
           state.cleared.price_min = true;
           state.cleared.price_max = true;
           minInput.value = '';
           maxInput.value = '';
+          paintSort();
           showErr(null);
           notify();
         });
         priceRow.appendChild(minInput);
         priceRow.appendChild(maxInput);
         body.appendChild(priceRow);
-        body.appendChild(el('p', 'criteria-hint', 'Пустое поле — без ограничения. Валюта: RUB.'));
+        body.appendChild(el('p', 'criteria-hint', 'Пустое поле — без ограничения. Валюта: RUB. Бюджет и сортировка независимы.'));
+        body.appendChild(sortLabel);
+        body.appendChild(sortList);
+        paintSort();
         showErr(validatePrice(state));
       } else if (id === 'brand') {
         const search = el('input', 'criteria-input');
@@ -978,6 +1070,11 @@
         get state() { return state; },
         get attributes() { return collectAttributes(state); },
         get clear_attributes() { return clearList(state); },
+        get price_sort() { return normalizePriceSort(state.price_sort); },
+        get prefer_cheaper() { return normalizePriceSort(state.price_sort) === PRICE_SORT_ASC; },
+        get delivery_preference() {
+          return 'any';
+        },
         get priceError() { return validatePrice(state); },
         closePanel,
         syncFromParsed(p) {
@@ -985,7 +1082,11 @@
           document.removeEventListener('mousedown', onDocClick);
           window.removeEventListener('resize', onResize);
           closePanel();
-          return mount(host, stateFromParsed(p), handlers);
+          const next = stateFromParsed(p);
+          next.price_sort = normalizePriceSort(state.price_sort);
+          next.prefer_cheaper = next.price_sort === PRICE_SORT_ASC;
+          next.delivery_preference = 'any';
+          return mount(host, next, handlers);
         },
         destroy() {
           document.removeEventListener('keydown', onDocKey);

@@ -12,6 +12,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const config = require('./lib/config');
+const { credentialsAccepted } = require('./lib/basic-auth');
 const { createLogger } = require('./lib/logger');
 const { parseQuery, buildSearchPhrase } = require('./lib/parse-query');
 const {
@@ -52,13 +53,31 @@ const OLLAMA_URL = config.ollama.url;
 // Лучше *-instruct: иначе ответ может уйти в thinking при пустом content.
 const MODEL = config.ollama.model;
 const OLLAMA_TIMEOUT_MS = config.ollama.timeoutMs;
-/** Таймаут одного вызова Ollama при разборе фото — 90 с. */
+/** Таймаут одного вызова при разборе фото — ≤90 с, дополнительно режется общим бюджетом. */
 const PHOTO_TIMEOUT_MS = config.ollama.photoTimeoutMs;
 /** schema = один проход JSON Schema; twopass = свободное описание → JSON; auto = schema, при скудном результате twopass */
 const PHOTO_PIPELINE = config.ollama.pipeline;
 /** Одновременные разборы фото (тяжёлая операция). */
 const PHOTO_CONCURRENCY = Math.max(1, Number(config.ollama.photoConcurrency || 1) || 1);
+/** Явный провайдер фото: ollama | timeweb (без авто-failover). */
+const PHOTO_PROVIDER = config.photoProvider === 'timeweb' ? 'timeweb' : 'ollama';
+const PHOTO_TOTAL_BUDGET_MS = config.photoTotalBudgetMs;
+const TIMEWEB_URL = config.timeweb.url;
+const TIMEWEB_MODEL = config.timeweb.model;
+const TIMEWEB_API_KEY = config.timeweb.apiKey;
+const timewebVision = require('./lib/timeweb-vision');
 let photoInFlight = 0;
+
+/** Общий слот для /api/search и /api/find. Захват синхронный, без очереди. */
+function acquirePhotoSlot() {
+  if (photoInFlight >= PHOTO_CONCURRENCY) return false;
+  photoInFlight += 1;
+  return true;
+}
+
+function releasePhotoSlot() {
+  photoInFlight = Math.max(0, photoInFlight - 1);
+}
 
 /** JSON Schema для structured outputs Ollama */
 const PHOTO_FORMAT = {
@@ -144,6 +163,46 @@ const SECURITY_HEADERS = {
     "img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; " +
     "connect-src 'self'; font-src 'self'; object-src 'none'",
 };
+
+function sendMinimalHealth(req, res) {
+  const headers = {
+    ...SECURITY_HEADERS,
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+  };
+  if (req.method === 'HEAD') {
+    res.writeHead(200, headers);
+    res.end();
+    return;
+  }
+  res.writeHead(200, headers);
+  res.end('{"ok":true}');
+}
+
+/** 401 без эха заголовка Authorization и без пароля. */
+function denyBasicAuth(res) {
+  res.setHeader('WWW-Authenticate', 'Basic realm="VishFind", charset="UTF-8"');
+  res.setHeader('Connection', 'close');
+  send(res, 401, { error: 'Требуется авторизация' });
+}
+
+/**
+ * true — запрос остановлен. Проверка до чтения тела и до модели.
+ * Выключенная защита ничего не меняет. Включённая с пустым логином/паролем закрыта.
+ */
+function basicAuthBlocks(req, res) {
+  if (!config.basicAuth.enabled) return false;
+  if (!config.basicAuth.user || !config.basicAuth.password) {
+    denyBasicAuth(res);
+    return true;
+  }
+  if (!credentialsAccepted(req.headers.authorization, config.basicAuth.user, config.basicAuth.password)) {
+    logger.warn('basic auth rejected');
+    denyBasicAuth(res);
+    return true;
+  }
+  return false;
+}
 
 function send(res, status, data) {
   const body = typeof data === 'string' ? data : JSON.stringify(data);
@@ -300,6 +359,13 @@ function publicParsed(parsed) {
     movie: pub.movie,
     rest: pub.rest,
     search_phrase: pub.search_phrase,
+    search_phrase_en: parsed && parsed.search_phrase_en ? parsed.search_phrase_en : null,
+    search_phrase_en_source: parsed && parsed.search_phrase_en_source
+      ? parsed.search_phrase_en_source
+      : null,
+    search_phrase_en_note: parsed && parsed.search_phrase_en_note
+      ? parsed.search_phrase_en_note
+      : null,
     warnings: pub.warnings || [],
   };
 }
@@ -352,33 +418,52 @@ function applyAttributes(parsed, attrs) {
 }
 
 function mergeVisionIntoParsed(parsed, analysis) {
-  // Явный текст пользователя важнее догадок модели
+  // Явный текст пользователя важнее догадок модели.
+  // В магазинную фразу — только тип, цвет, материал, бренд/модель; полный разбор остаётся в photo_attrs.
+  const { buildCompactSearchPhrase } = require('./lib/parse-query');
   const typeLabel =
     [analysis.garment_type, analysis.subtype].map(cleanAttr).filter(Boolean).join(' ') ||
     cleanAttr(analysis.category);
+  const colorMain = cleanAttr(analysis.color_primary) || cleanAttr(analysis.color);
   const colorExtra = Array.isArray(analysis.color_extra)
     ? analysis.color_extra.map(cleanAttr).filter(Boolean)
     : [];
-  const colorMain = cleanAttr(analysis.color_primary) || cleanAttr(analysis.color);
+  // В критерии — основной + доп. цвета; в короткую фразу пойдёт первый.
   const colorJoined = [colorMain, ...colorExtra].filter(Boolean).join(', ') || null;
-  const descBits = [
-    analysis.material,
-    analysis.pattern,
-    analysis.closure,
-    analysis.hardware_and_details,
-    analysis.era_or_style,
-    analysis.description,
-  ]
-    .map(cleanAttr)
-    .filter(Boolean);
-  return applyAttributes(parsed, {
+  const material = cleanAttr(analysis.material);
+  const unsure = /не уверен|неувере|возможно|похож|может быть|likely|maybe|uncertain/i;
+  const brandRaw = cleanAttr(analysis.brand);
+  // Не определяем бренд только по внешнему сходству.
+  const brand =
+    brandRaw && !unsure.test(brandRaw) && brandRaw.length < 40 ? brandRaw : null;
+  const materialOk = material && !unsure.test(material) ? material : null;
+  const modelName = cleanAttr(analysis.model_name);
+  const out = applyAttributes(parsed, {
     category: typeLabel,
-    color: colorJoined,
-    brand: analysis.brand,
-    size: analysis.size,
-    budget: analysis.max_price_rub,
-    description: descBits.join('; ') || cleanAttr(analysis.search_phrase),
+    color: colorJoined || colorMain,
+    brand,
+    // размер с фото не навязываем как жёсткое условие поиска
+    size: null,
+    budget: null,
+    // материал — короткий rest; полный description не склеиваем в запрос
+    description: materialOk || null,
   });
+  if (modelName && !unsure.test(modelName)) {
+    out.rest = [out.rest, modelName].filter(Boolean).join(' ').trim() || out.rest;
+  }
+  // Пустые categories/colors [] после normalize не должны блокировать singular.
+  if ((!Array.isArray(out.categories) || !out.categories.length) && out.category) {
+    out.categories = [out.category];
+  }
+  if ((!Array.isArray(out.colors) || !out.colors.length) && out.color) {
+    out.colors = [String(out.color).split(/[,/]/)[0].trim()].filter(Boolean);
+  }
+  const compact = buildCompactSearchPhrase(out);
+  if (compact) out.search_phrase = compact;
+  else if (!out.search_phrase) {
+    out.search_phrase = buildSearchPhrase(out, out.movie) || out.search_phrase;
+  }
+  return out;
 }
 
 /** Насколько заполнен разбор (для auto → twopass). */
@@ -445,6 +530,21 @@ async function handleSearch(req, res) {
   const attrsOnly = checked.value.attrsOnly;
   const clearAttributes = checked.value.clearAttributes;
   const userWantsWeb = checked.value.webSearch;
+  const preferCheaper = checked.value.preferCheaper;
+  const priceSort = checked.value.priceSort || (preferCheaper ? 'asc' : 'default');
+  // Доставка выведена из пользовательского сценария: не применяем даже при старом payload.
+  const deliveryPreference = 'any';
+
+  // Контентные ограничения — до parse/Ollama/ссылок. Не логируем текст запроса.
+  const contentPolicy = require('./lib/content-policy');
+  const contentCheck = contentPolicy.checkSearchInput({ query, attributes: attrs });
+  if (!contentCheck.allowed) {
+    logger.warn('content_not_allowed', { rule_id: contentCheck.rule_id });
+    return send(res, 400, {
+      error: contentCheck.error,
+      error_kind: contentCheck.error_kind,
+    });
+  }
 
   // Единая модель: текст → merge с attributes / clear_attributes → publicCriteria.
   let parsed = query ? parseQuery(query, { movies: MOVIES, brands: BRANDS }) : emptyParsed(query);
@@ -488,7 +588,7 @@ async function handleSearch(req, res) {
         ai_enabled: false,
       });
     }
-    if (photoInFlight >= PHOTO_CONCURRENCY) {
+    if (!acquirePhotoSlot()) {
       return send(res, 503, {
         error:
           'Сейчас слишком много разборов фото. Подождите немного или выполните текстовый поиск без фото.',
@@ -499,21 +599,28 @@ async function handleSearch(req, res) {
     const movieObj = parsed.movie
       ? MOVIES.find((m) => m.title === parsed.movie.title) || null
       : findMovieLegacy(query);
-    photoInFlight += 1;
     try {
       const analysis = await analyze(query, image, movieObj);
       photo_attrs = publicPhotoAttrs(analysis);
       photo_pipeline = analysis.pipeline || null;
+      if (analysis._usage) photo_attrs = { ...photo_attrs, usage: analysis._usage };
       parsed = mergeVisionIntoParsed(parsed, analysis);
       const n = normalizeCriteria(parsed);
       parsed = { ...parsed, ...n };
       photo_used = true;
     } catch (e) {
-      logger.warn('Фотоанализ не удался', { error: e.message });
+      logger.warn('Фотоанализ не удался', { error: e.message, provider: PHOTO_PROVIDER, code: e.code });
       let msg = `Разбор фото не удался: ${e.message}`;
-      if (e.name === 'TimeoutError') {
-        msg = `Модель не ответила за ${Math.round(PHOTO_TIMEOUT_MS / 1000)} с. Попробуйте меньшее фото или проверьте Ollama.`;
-      } else if (/fetch failed|ECONNREFUSED/i.test(e.message + (e.cause ? e.cause.message : ''))) {
+      if (e.name === 'TimeoutError' || e.code === 'TIMEWEB_TIMEOUT' || e.code === 'PHOTO_BUDGET') {
+        msg = `Модель не ответила вовремя. Попробуйте меньшее фото или повторите позже (${PHOTO_PROVIDER}).`;
+      } else if (e.code === 'TIMEWEB_NO_KEY') {
+        msg = 'Разбор фото через Timeweb: не задан TIMEWEB_AI_API_KEY на сервере.';
+      } else if (e.code === 'TIMEWEB_AUTH' || e.code === 'TIMEWEB_RATE' || e.code === 'TIMEWEB_SERVICE') {
+        msg = e.message;
+      } else if (
+        PHOTO_PROVIDER === 'ollama' &&
+        /fetch failed|ECONNREFUSED/i.test(e.message + (e.cause ? e.cause.message : ''))
+      ) {
         msg =
           'Ollama не запущена. Установите Ollama, выполните ollama pull qwen3-vl:4b-instruct, запустите Ollama и повторите.';
       }
@@ -557,7 +664,7 @@ async function handleSearch(req, res) {
         });
       }
     } finally {
-      photoInFlight = Math.max(0, photoInFlight - 1);
+      releasePhotoSlot();
     }
   }
 
@@ -574,6 +681,28 @@ async function handleSearch(req, res) {
     });
   }
 
+  // Английская фраза один раз на запрос (переиспользуется для eBay); без повторного vision.
+  let searchPhraseEnMeta = {
+    search_phrase_en: null,
+    search_phrase_en_source: 'none',
+    search_phrase_en_note: null,
+  };
+  try {
+    const { buildSearchPhraseEn } = require('./lib/search-phrase-en');
+    searchPhraseEnMeta = await buildSearchPhraseEn(parsed, {
+      ollamaChat: AI_ENABLED ? ollamaChat : null,
+      model: AI_ENABLED ? MODEL : null,
+      timeoutMs: Math.min(8000, OLLAMA_TIMEOUT_MS || 8000),
+    });
+    parsed.search_phrase_en = searchPhraseEnMeta.search_phrase_en;
+    parsed.search_phrase_en_source = searchPhraseEnMeta.search_phrase_en_source;
+    parsed.search_phrase_en_note = searchPhraseEnMeta.search_phrase_en_note;
+  } catch (_) {
+    parsed.search_phrase_en = null;
+    parsed.search_phrase_en_source = 'fallback';
+    parsed.search_phrase_en_note = 'Английская фраза недоступна.';
+  }
+
   // Выбор источников под запрос (не все кандидаты сразу).
   // Без обхода через «все verified:true» — та же политика, что selectSources.
   const selection = selectSources(parsed, { maxSources: 8 });
@@ -581,7 +710,13 @@ async function handleSearch(req, res) {
 
   let sources = [];
   try {
-    const linksResult = await providers.links.search({ parsed, sources: adapterSources });
+    const linksResult = await providers.links.search({
+      parsed,
+      sources: adapterSources,
+      price_sort: priceSort,
+      prefer_cheaper: preferCheaper,
+      delivery_preference: deliveryPreference,
+    });
     sources = (linksResult && linksResult.items) || [];
   } catch (e) {
     logger.warn('links provider failed', { error: e.message });
@@ -853,6 +988,12 @@ async function handleSearch(req, res) {
       brands_registry: brandsApi.summary(),
     },
     budget_display,
+    prefer_cheaper: preferCheaper,
+    price_sort: priceSort,
+    delivery_preference: deliveryPreference,
+    search_phrase_en: searchPhraseEnMeta.search_phrase_en,
+    search_phrase_en_source: searchPhraseEnMeta.search_phrase_en_source,
+    search_phrase_en_note: searchPhraseEnMeta.search_phrase_en_note,
     warnings: responseWarnings,
     photo_used,
     prices: null,
@@ -1029,6 +1170,29 @@ function toRuLabel(s, map) {
   return map[key] || v;
 }
 
+/** Общий бюджет одного разбора: все вызовы/повторы укладываются в PHOTO_TOTAL_BUDGET_MS. */
+function createPhotoBudget() {
+  const started = Date.now();
+  const total = PHOTO_TOTAL_BUDGET_MS;
+  return {
+    remaining() {
+      return Math.max(0, total - (Date.now() - started));
+    },
+    /** Выделить таймаут на один вызов (не больше preferred и остатка бюджета). */
+    slice(preferredMs) {
+      const rem = this.remaining();
+      if (rem < 1500) {
+        throw Object.assign(new Error('Исчерпан лимит времени разбора фото'), {
+          name: 'TimeoutError',
+          code: 'PHOTO_BUDGET',
+        });
+      }
+      const pref = Math.max(1000, Number(preferredMs) || PHOTO_TIMEOUT_MS);
+      return Math.min(pref, rem);
+    },
+  };
+}
+
 function publicPhotoAttrs(analysis) {
   if (!analysis) return null;
   return {
@@ -1144,7 +1308,7 @@ function extractModelText(message) {
   return thinking;
 }
 
-async function ollamaVisionJson(imageB64, prompt, strictFallbackPrompt) {
+async function ollamaVisionJson(imageB64, prompt, strictFallbackPrompt, budget) {
   const tryChat = async (content, useSchema) => {
     const message = { role: 'user', content };
     if (imageB64) message.images = [imageB64];
@@ -1157,11 +1321,12 @@ async function ollamaVisionJson(imageB64, prompt, strictFallbackPrompt) {
     };
     if (useSchema) base.format = PHOTO_FORMAT;
     else base.format = 'json';
+    const t = budget.slice(PHOTO_TIMEOUT_MS);
     try {
-      return await ollamaChat({ ...base, think: false }, PHOTO_TIMEOUT_MS);
+      return await ollamaChat({ ...base, think: false }, t);
     } catch (e) {
       if (e.status === 400 && useSchema) {
-        return ollamaChat({ ...base, format: 'json', think: false }, PHOTO_TIMEOUT_MS);
+        return ollamaChat({ ...base, format: 'json', think: false }, budget.slice(PHOTO_TIMEOUT_MS));
       }
       throw e;
     }
@@ -1184,79 +1349,160 @@ async function ollamaVisionJson(imageB64, prompt, strictFallbackPrompt) {
   throw err;
 }
 
-async function analyzeSchema(query, imageB64, movie) {
-  const fields = await ollamaVisionJson(
+/** Timeweb: image_url data URL + json_object; тот же parsePhotoFields / схема полей. */
+async function timewebVisionJson(imageB64, prompt, strictFallbackPrompt, budget) {
+  const tryOnce = async (textPrompt) => {
+    const t = budget.slice(PHOTO_TIMEOUT_MS);
+    const data = await timewebVision.chatCompletion({
+      url: TIMEWEB_URL,
+      apiKey: TIMEWEB_API_KEY,
+      model: TIMEWEB_MODEL,
+      prompt: textPrompt,
+      imageB64: imageB64 || null,
+      timeoutMs: t,
+    });
+    const fields = parsePhotoFields(data.content);
+    if (fields) fields._usage = data.usage;
+    return { fields, raw: data.content, usage: data.usage };
+  };
+
+  let lastRaw = '';
+  let lastUsage = null;
+  let got = await tryOnce(prompt);
+  lastRaw = got.raw;
+  lastUsage = got.usage;
+  if (got.fields) return got.fields;
+
+  if (strictFallbackPrompt) {
+    got = await tryOnce(strictFallbackPrompt);
+    lastRaw = got.raw;
+    lastUsage = got.usage || lastUsage;
+    if (got.fields) {
+      if (lastUsage && !got.fields._usage) got.fields._usage = lastUsage;
+      return got.fields;
+    }
+  }
+
+  const err = new Error('Модель вернула ответ не в формате JSON');
+  err.raw = lastRaw;
+  throw err;
+}
+
+async function visionJson(imageB64, prompt, strictFallbackPrompt, budget) {
+  if (PHOTO_PROVIDER === 'timeweb') {
+    return timewebVisionJson(imageB64, prompt, strictFallbackPrompt, budget);
+  }
+  return ollamaVisionJson(imageB64, prompt, strictFallbackPrompt, budget);
+}
+
+async function analyzeSchema(query, imageB64, movie, budget) {
+  const fields = await visionJson(
     imageB64,
     buildPhotoPrompt(query, movie, false),
-    buildPhotoPrompt(query, movie, true)
+    buildPhotoPrompt(query, movie, true),
+    budget
   );
   if (isNoGarmentResult(fields)) {
     throw new Error('На фото не удалось распознать одежду');
   }
   fields.pipeline = 'schema';
+  fields._provider = PHOTO_PROVIDER;
   return fields;
 }
 
 /** Двухпроходный: свободное описание по фото → JSON без картинки (только текст). */
-async function analyzeTwoPass(query, imageB64, movie) {
-  const freeMsg = {
-    model: MODEL,
-    messages: [
-      {
-        role: 'user',
-        content: buildFreeDescribePrompt(query, movie),
-        images: [imageB64],
-      },
-    ],
-    stream: false,
-    keep_alive: '30m',
-    options: { temperature: 0, num_predict: 700 },
-  };
-  let freeData;
-  try {
-    freeData = await ollamaChat({ ...freeMsg, think: false }, PHOTO_TIMEOUT_MS);
-  } catch (e) {
-    if (e.status === 400) freeData = await ollamaChat(freeMsg, PHOTO_TIMEOUT_MS);
-    else throw e;
+async function analyzeTwoPass(query, imageB64, movie, budget) {
+  let freeText = '';
+  let freeUsage = null;
+
+  if (PHOTO_PROVIDER === 'timeweb') {
+    const free = await timewebVision.chatCompletion({
+      url: TIMEWEB_URL,
+      apiKey: TIMEWEB_API_KEY,
+      model: TIMEWEB_MODEL,
+      prompt:
+        buildFreeDescribePrompt(query, movie) +
+        '\nВерни JSON объект с одним полем free_text (строка с описанием).',
+      imageB64,
+      timeoutMs: budget.slice(PHOTO_TIMEOUT_MS),
+    });
+    freeUsage = free.usage;
+    const parsedFree = parseJsonLoose(free.content);
+    freeText =
+      (parsedFree && typeof parsedFree.free_text === 'string' && parsedFree.free_text) ||
+      extractModelText({ content: free.content }) ||
+      String(free.content || '');
+  } else {
+    const freeMsg = {
+      model: MODEL,
+      messages: [
+        {
+          role: 'user',
+          content: buildFreeDescribePrompt(query, movie),
+          images: [imageB64],
+        },
+      ],
+      stream: false,
+      keep_alive: '30m',
+      options: { temperature: 0, num_predict: 700 },
+    };
+    let freeData;
+    try {
+      freeData = await ollamaChat({ ...freeMsg, think: false }, budget.slice(PHOTO_TIMEOUT_MS));
+    } catch (e) {
+      if (e.status === 400) freeData = await ollamaChat(freeMsg, budget.slice(PHOTO_TIMEOUT_MS));
+      else throw e;
+    }
+    freeText = extractModelText(freeData && freeData.message);
   }
-  const freeText = extractModelText(freeData && freeData.message);
+
   if (!freeText || freeText.length < 20) {
     throw new Error('Модель не дала свободное описание одежды');
   }
 
   // второй проход — без изображения: структурируем уже сказанное
-  const fields = await ollamaVisionJson(
+  const fields = await visionJson(
     null,
     buildStructFromTextPrompt(freeText, false),
-    buildStructFromTextPrompt(freeText, true)
+    buildStructFromTextPrompt(freeText, true),
+    budget
   );
   if (isNoGarmentResult(fields)) {
     throw new Error('На фото не удалось распознать одежду');
   }
   fields.pipeline = 'twopass';
   fields._free_text = freeText;
+  fields._provider = PHOTO_PROVIDER;
+  if (freeUsage && !fields._usage) fields._usage = freeUsage;
   return fields;
 }
 
 /**
- * Разбор фото через Ollama vision.
- * Один повтор при невалидном JSON; при неудаче — честная ошибка (без фиктивного успеха).
+ * Разбор фото: провайдер только из PHOTO_PROVIDER (ollama | timeweb).
+ * Без авто-failover. Повторы JSON укладываются в общий бюджет.
  */
 async function analyze(query, imageB64, movie) {
   if (!imageB64) throw new Error('Нет изображения для анализа');
+  if (PHOTO_PROVIDER === 'timeweb' && !TIMEWEB_API_KEY) {
+    const e = new Error('TIMEWEB_AI_API_KEY не задан');
+    e.code = 'TIMEWEB_NO_KEY';
+    e.name = 'ConfigError';
+    throw e;
+  }
 
+  const budget = createPhotoBudget();
   const mode = PHOTO_PIPELINE;
-  if (mode === 'twopass') return analyzeTwoPass(query, imageB64, movie);
-  if (mode === 'schema') return analyzeSchema(query, imageB64, movie);
+  if (mode === 'twopass') return analyzeTwoPass(query, imageB64, movie, budget);
+  if (mode === 'schema') return analyzeSchema(query, imageB64, movie, budget);
 
-  // auto: schema, при скудном результате — twopass
+  // auto: schema, при скудном результате — twopass (тот же бюджет, без смены провайдера)
   let schemaResult = null;
   let schemaErr = null;
   try {
-    schemaResult = await analyzeSchema(query, imageB64, movie);
+    schemaResult = await analyzeSchema(query, imageB64, movie, budget);
   } catch (e) {
     schemaErr = e;
-    logger.warn('Фотоанализ schema не удался', { error: e.message });
+    logger.warn('Фотоанализ schema не удался', { error: e.message, provider: PHOTO_PROVIDER });
   }
 
   if (schemaResult && photoDetailScore(schemaResult) >= 5) {
@@ -1264,14 +1510,13 @@ async function analyze(query, imageB64, movie) {
   }
 
   try {
-    const two = await analyzeTwoPass(query, imageB64, movie);
+    const two = await analyzeTwoPass(query, imageB64, movie, budget);
     if (!schemaResult) return two;
-    // берём более детальный
     if (photoDetailScore(two) > photoDetailScore(schemaResult)) return two;
     schemaResult.pipeline = 'schema';
     return schemaResult;
   } catch (e) {
-    logger.warn('Фотоанализ twopass не удался', { error: e.message });
+    logger.warn('Фотоанализ twopass не удался', { error: e.message, provider: PHOTO_PROVIDER });
     if (schemaResult) return schemaResult;
     throw schemaErr || e;
   }
@@ -1389,8 +1634,21 @@ async function handleFind(req, res) {
   const t0 = Date.now();
   let analysis = null;
 
+  if (image && !acquirePhotoSlot()) {
+    return send(res, 503, {
+      error:
+        'Сейчас слишком много разборов фото. Подождите немного или выполните текстовый поиск без фото.',
+      overloaded: true,
+      retry_after_sec: 5,
+    });
+  }
+
   try {
-    analysis = await analyze(query, image, movie);
+    try {
+      analysis = await analyze(query, image, movie);
+    } finally {
+      if (image) releasePhotoSlot();
+    }
   } catch (e) {
     logger.warn('Анализ не удался', { error: e.message });
     if (e.name === 'TimeoutError') {
@@ -1445,6 +1703,10 @@ async function handleHealth(res) {
   // Health не дёргает внешние сервисы (Ollama/eBay): состояние берётся
   // из кэша/счётчиков. Секреты и детали ошибок наружу не попадают.
   const ebayStatus = ebayProvider.status();
+  const {
+    anyVerifiedSortPriceAsc,
+    anyVerifiedPriceSort,
+  } = require('./lib/marketplace-capabilities');
   const payload = {
     ok: true,
     name: 'vishfind',
@@ -1454,8 +1716,13 @@ async function handleHealth(res) {
     timestamp: new Date().toISOString(),
     ai_enabled: AI_ENABLED,
     text_search_ok: true,
-    recognition_configured: AI_ENABLED,
+    photo_provider: PHOTO_PROVIDER,
+    recognition_configured:
+      AI_ENABLED && (PHOTO_PROVIDER === 'ollama' || (PHOTO_PROVIDER === 'timeweb' && !!TIMEWEB_API_KEY)),
+    timeweb_configured: !!TIMEWEB_API_KEY,
     photo_busy: photoInFlight > 0,
+    sort_cheaper_available: anyVerifiedSortPriceAsc(),
+    sort_price_available: anyVerifiedPriceSort(),
     web_search: ollamaWeb.publicStatus(),
     fx: fxRates.publicStatus(),
     source_registry: registrySummary(),
@@ -1496,22 +1763,31 @@ const MIME = {
   '.ttf': 'font/ttf',
   '.otf': 'font/otf',
 };
-const PRIVATE_TOP = new Set([
-  'server.js',
-  'ai-search.js',
-  'env.txt',
-  'package.json',
-  'package-lock.json',
-  'movies.json',
-  'node_modules',
-  'data',
-  'lib',
-  'providers',
-  'scripts',
-  'test',
-  'README.md',
-  '.gitignore',
-]);
+/** Страницы, на которые есть прямые ссылки. */
+const PUBLIC_FILES = new Set(['index.html', 'about.html', 'contacts.html']);
+/**
+ * Каталоги фронтенда и расширения, которые реально запрашивает сайт:
+ * css/, js/, fonts/ (fonts.css), images/ только файлами верхнего уровня.
+ * Вложенные каталоги (images/logo-preview, archives, docs) сюда не входят.
+ */
+const PUBLIC_DIR_EXT = {
+  css: new Set(['.css']),
+  js: new Set(['.js']),
+  fonts: new Set(['.woff2', '.woff', '.ttf', '.otf']),
+  images: new Set(['.svg', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.ico']),
+};
+
+function isPublicAsset(rel) {
+  const norm = String(rel || '').split(path.sep).join('/');
+  if (!norm || norm.includes('\0')) return false;
+  const parts = norm.split('/');
+  if (parts.some((p) => !p || p === '.' || p === '..' || p.startsWith('.'))) return false;
+  if (PUBLIC_FILES.has(norm)) return true;
+  if (parts.length !== 2) return false;
+  const allowed = PUBLIC_DIR_EXT[parts[0]];
+  if (!allowed) return false;
+  return allowed.has(path.extname(parts[1]).toLowerCase());
+}
 
 function serveStatic(req, res) {
   let pathname;
@@ -1522,9 +1798,9 @@ function serveStatic(req, res) {
   }
   if (pathname === '/') pathname = '/index.html';
   const full = path.normalize(path.join(ROOT, pathname));
-  if (!full.startsWith(ROOT + path.sep)) return send(res, 403, 'Forbidden');
-  const parts = path.relative(ROOT, full).split(path.sep);
-  if (parts.some((p) => p.startsWith('.')) || PRIVATE_TOP.has(parts[0])) return send(res, 403, 'Forbidden');
+  const rootWithSep = ROOT.endsWith(path.sep) ? ROOT : ROOT + path.sep;
+  if (full !== rootWithSep.slice(0, -1) && !full.startsWith(rootWithSep)) return send(res, 403, 'Forbidden');
+  if (!isPublicAsset(path.relative(ROOT, full))) return send(res, 403, 'Forbidden');
   fs.stat(full, (err, st) => {
     if (err || !st.isFile()) return send(res, 404, 'Не найдено');
     res.writeHead(200, {
@@ -1539,6 +1815,11 @@ function serveStatic(req, res) {
 // Запуск HTTP-сервера — только при прямом запуске (npm start / node server.js).
 // При require('./server.js') из тестов сервер не поднимается, а экспортируются функции.
 if (require.main === module) {
+  if (config.basicAuth.enabled && (!config.basicAuth.user || !config.basicAuth.password)) {
+    logger.error('BASIC_AUTH_ENABLED=true, но логин или пароль пусты. Сервер не запущен.');
+    process.exit(1);
+  }
+
   // Непойманные ошибки: логируем санитизированно и завершаем процесс,
   // чтобы платформа перезапустила сервис (без «полуживого» состояния).
   process.on('uncaughtException', (e) => {
@@ -1554,6 +1835,10 @@ if (require.main === module) {
     .createServer(async (req, res) => {
       try {
         const p = (req.url || '').split('?')[0];
+        if ((req.method === 'GET' || req.method === 'HEAD') && p === '/api/healthz') {
+          return sendMinimalHealth(req, res);
+        }
+        if (basicAuthBlocks(req, res)) return;
         if (req.method === 'POST' && p === '/api/search') return await handleSearch(req, res);
         if (req.method === 'POST' && p === '/api/find') return await handleFind(req, res);
         if (req.method === 'GET' && p === '/api/health') return await handleHealth(res);
@@ -1569,7 +1854,9 @@ if (require.main === module) {
       logger.info(`VishFind запущен: http://${shown}:${PORT} (bind ${HOST})`, {
         env: config.env,
         ai_enabled: AI_ENABLED,
+        photo_provider: PHOTO_PROVIDER,
         ebay_configured: ebayProvider.isConfigured(),
+        basic_auth: config.basicAuth.enabled,
       });
       logger.info(`Провайдеры: ${providers.listProviders().map((p) => `${p.id}:${p.enabled ? 'on' : 'off'}`).join(', ')}`);
     });

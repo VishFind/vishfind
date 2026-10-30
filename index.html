@@ -6,21 +6,38 @@
   <title>VishFind — поиск редкой и винтажной одежды</title>
   <meta name="description" content="VishFind разбирает текстовый запрос или фото и готовит переходы к поиску на сторонних сайтах. Цену, наличие и подлинность проверяйте у продавца."/>
   <meta name="robots" content="index, follow"/>
-  <link rel="icon" href="images/favicon.svg" type="image/svg+xml"/>
+  <link rel="icon" href="images/favicon.svg?v=20261028" type="image/svg+xml"/>
   <meta property="og:type" content="website"/>
   <meta property="og:title" content="VishFind — поиск редкой и винтажной одежды"/>
   <meta property="og:description" content="Разбор запроса и переходы к поиску на сторонних сайтах. Без оплаты за товары и без гарантий подлинности."/>
   <meta property="og:locale" content="ru_RU"/>
   <script>
     (function () {
+      var theme = 'light';
       try {
-        var k = 'vishfind-theme';
-        var s = localStorage.getItem(k) || localStorage.getItem('isearch-theme');
-        var t = s || 'light';
-        document.documentElement.setAttribute('data-theme', t);
-      } catch (e) {
-        document.documentElement.setAttribute('data-theme', 'light');
-      }
+        var s = localStorage.getItem('vishfind-theme') || localStorage.getItem('isearch-theme');
+        if (s === 'dark' || s === 'light') theme = s;
+      } catch (e) {}
+      document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.classList.add('vf-boot');
+      try {
+        var seenKey = 'vishfind:welcome:seen:v1';
+        if (new URLSearchParams(location.search).get('welcome') === 'replay') {
+          sessionStorage.removeItem(seenKey);
+        }
+        if (sessionStorage.getItem(seenKey) === '1') return;
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          sessionStorage.setItem(seenKey, '1');
+          return;
+        }
+        document.documentElement.classList.add('is-intro', 'is-intro-lock');
+        window.setTimeout(function () {
+          if (document.documentElement.classList.contains('is-intro-done')) return;
+          if (document.querySelector('.welcome-splash')) return;
+          document.documentElement.classList.remove('is-intro', 'is-intro-lock', 'vf-boot');
+          document.documentElement.classList.add('is-intro-done');
+        }, 5600);
+      } catch (e2) {}
     })();
   </script>
   <link rel="stylesheet" href="css/fonts.css"/>
@@ -32,7 +49,10 @@
 
   <header class="site-header">
     <div class="wrap glass">
-      <a class="brand" href="/">VishFind</a>
+      <a class="brand" href="/" aria-label="VishFind">
+        <img class="brand-logo brand-logo--light" src="images/logo-vishfind-light.png" alt="" width="180" height="64" decoding="async"/>
+        <img class="brand-logo brand-logo--dark" src="images/logo-vishfind-dark.png" alt="" width="180" height="64" decoding="async"/>
+      </a>
       <div class="header-right">
         <div class="header-tools" role="group" aria-label="Личные данные в браузере">
           <button type="button" class="btn btn-ghost header-tool" id="btn-saved" aria-haspopup="dialog" aria-controls="app-sheet" aria-expanded="false">
@@ -186,6 +206,8 @@
 
   <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden/>
   <script src="js/theme.js" defer></script>
+  <script src="js/welcome-scene-data.js" defer></script>
+  <script src="js/welcome-splash.js" defer></script>
   <script src="js/saved-items.js" defer></script>
   <script src="js/criteria-panel.js" defer></script>
   <script src="js/search.js" defer></script>

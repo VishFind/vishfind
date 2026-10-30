@@ -43,7 +43,7 @@ test('кириллица и спецсимволы кодируются в URL',
   assert.doesNotMatch(url, /(?<![%])#/);
 });
 
-test('бюджет в URL только при price_filter_verified; иначе текстовый fallback', async () => {
+test('бюджет в URL только при price_filter_verified; иначе не пишем словами в {q}', async () => {
   const out = await links.search({
     parsed: { search_phrase: 'куртка', budget: 15000, budget_max: 15000 },
     sources,
@@ -57,12 +57,12 @@ test('бюджет в URL только при price_filter_verified; иначе 
   assert.ok(!decodeURIComponent(ya.url).includes('до 15000 рублей'), 'YM: no text budget duplicate');
   assert.equal(ozon.price_filter_applied, false);
   assert.ok(!/currency_price=/.test(ozon.url));
-  assert.equal(ozon.budget_in_query, true);
-  assert.ok(decodeURIComponent(ozon.url).includes('до 15000 рублей'));
-  assert.ok((ozon.in_query_filters || []).includes('price'));
+  assert.equal(ozon.budget_in_query, false);
+  assert.ok(!decodeURIComponent(ozon.url).includes('до 15000 рублей'));
+  assert.ok(!(ozon.in_query_filters || []).includes('price'));
   assert.ok(!(ozon.applied_filters || []).includes('price'));
   assert.equal(wb.price_filter_applied, false);
-  assert.equal(wb.budget_in_query, true);
+  assert.equal(wb.budget_in_query, false);
 });
 
 test('Яндекс Маркет: pricefrom и priceto из диапазона', async () => {
@@ -121,7 +121,7 @@ test('витрина без {q} не заявляет передачу бюдж�
   assert.ok((out.items[0].filter_details || []).some((d) => /не передан/i.test(d.text || '')));
 });
 
-test('ручная цена в критериях — одна в текстовом fallback, без противоречий', async () => {
+test('ручная цена в критериях не попадает словами в {q}', async () => {
   const out = await links.search({
     parsed: {
       search_phrase: 'куртка',
@@ -132,8 +132,9 @@ test('ручная цена в критериях — одна в текстов
     sources: sources.filter((s) => s.id === 'ozon'),
   });
   const decoded = decodeURIComponent(out.items[0].url);
-  assert.ok(decoded.includes('до 10000 рублей'));
-  assert.ok(!decoded.includes('15000'));
+  assert.ok(!decoded.includes('до 10000 рублей'));
+  assert.ok(decoded.includes('куртка'));
+  assert.equal(out.items[0].budget_in_query, false);
 });
 
 test('без search_phrase и raw_query — пустой список', async () => {
@@ -141,7 +142,7 @@ test('без search_phrase и raw_query — пустой список', async ()
   assert.deepEqual(out.items, []);
 });
 
-test('неизвестный price_param не придумывается; бюджет — словами в {q}', async () => {
+test('неизвестный price_param не придумывается; бюджет не пишется в {q}', async () => {
   const custom = [
     {
       id: 'x',
@@ -162,7 +163,12 @@ test('неизвестный price_param не придумывается; бюд
   assert.ok(!/price|currency/i.test(out.items[0].url.split('?')[1] || ''));
   assert.equal(
     out.items[0].url,
-    'https://example.com/s?q=' + encodeURIComponent('платье до 9000 рублей')
+    'https://example.com/s?q=' + encodeURIComponent('платье')
   );
-  assert.equal(out.items[0].budget_in_query, true);
+  assert.equal(out.items[0].budget_in_query, false);
+  assert.ok(
+    (out.items[0].filter_details || []).some(
+      (d) => d && /бюджет|цен/i.test(d.text || '') && /сайт|вручную|не подставля/i.test(d.text || '')
+    )
+  );
 });

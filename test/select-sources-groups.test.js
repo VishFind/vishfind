@@ -96,10 +96,11 @@ test('лимит: тройка не вытесняется; реселлеры �
   assert.ok(list.includes('ozon') && list.includes('wildberries') && list.includes('yandex_market'));
   assert.ok(
     list.some((id) =>
-      ['brandshop', 'peak_concept', 'tsum_collect', 'spin4spin', 'ebay'].includes(id)
+      ['brandshop', 'peak_concept', 'spin4spin', 'ebay'].includes(id)
     ),
     'reseller remains'
   );
+  assert.ok(!list.includes('tsum_collect') && !list.includes('tsum_ru'));
   assert.ok(list.length > 8, 'optional + mandatory can exceed 8');
 });
 

@@ -10,14 +10,16 @@ const sources = require('../data/sources.json');
 const root = path.join(__dirname, '..');
 const js = fs.readFileSync(path.join(root, 'js/search.js'), 'utf8');
 
-test('UI: «Что передано», копирование запроса, фильтр групп', () => {
-  assert.match(js, /Что передано/);
+test('UI: «Что распозналось», копирование запроса, фильтр групп', () => {
+  assert.match(js, /Что распозналось/);
   assert.match(js, /Скопировать запрос/);
+  assert.match(js, /Упростить запрос/);
   assert.match(js, /linkGroupFilter/);
   assert.match(js, /Подходящие сайты/);
   assert.match(js, /Открыть поиск/);
-  assert.match(js, /Открыть каталог/);
+  assert.match(js, /Открыть сайт/);
   assert.doesNotMatch(js, /Найдено N товаров|Найдена лучшая цена|Все фильтры применены/);
+  assert.doesNotMatch(js, /Сортировка: сначала дешевле/);
   assert.match(js, /linkGroupFilter = 'all'/);
 });
 
@@ -41,16 +43,17 @@ test('Яндекс: native price; search_phrase_used без текстового
   assert.ok(!(item.in_query_filters || []).includes('price'));
 });
 
-test('Ozon: text budget в search_phrase_used; in_query не applied', async () => {
+test('Ozon: бюджет не пишется словами в {q}; примечание о ручном фильтре', async () => {
   const out = await links.search({
     parsed: { search_phrase: 'куртка', budget_max: 10000, budget: 10000 },
     sources: sources.filter((s) => s.id === 'ozon'),
   });
   const item = out.items[0];
-  assert.equal(item.budget_in_query, true);
-  assert.match(item.search_phrase_used, /до 10000 рублей/);
-  assert.ok((item.in_query_filters || []).includes('price'));
-  assert.ok(!(item.applied_filters || []).includes('price'));
+  assert.equal(item.budget_in_query, false);
+  assert.equal(item.search_phrase_used, 'куртка');
+  assert.ok(!/до 10000 рублей/.test(item.search_phrase_used || ''));
+  assert.ok(!(item.in_query_filters || []).includes('price'));
+  assert.ok((item.filter_details || []).some((d) => d && /не подтвержд/i.test(d.text || '')));
 });
 
 test('витрина без {q}: phrase_accepts_query false', async () => {

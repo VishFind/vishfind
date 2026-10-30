@@ -20,9 +20,18 @@
       "color": "in_query_only",
       "brand": "in_query_only",
       "category_id": "unsupported",
-      "features": "in_query_only"
+      "features": "in_query_only",
+      "sort_price_asc": "unconfirmed",
+      "delivery_fastest": "unconfirmed"
     },
-    "verification_note": "Формат ?text= подтверждён. Параметр currency_price=min;max встречается в публичных URL, но живую выдачу с ценой не подтвердили (антибот) — цену в ссылки не подставляем. Цвет/размер/бренд/тип — словами в запросе."
+    "sort_price_asc_verified": false,
+    "sort_price_asc_param": null,
+    "sort_price_asc_value": null,
+    "delivery_fastest_verified": false,
+    "delivery_fastest_kind": null,
+    "delivery_fastest_param": null,
+    "delivery_fastest_value": null,
+    "verification_note": "Формат ?text= подтверждён. Параметр currency_price=min;max встречается в публичных URL, но живую выдачу с ценой не подтвердили (антибот) — цену в ссылки не подставляем. Цвет/размер/бренд/тип — словами в запросе. Сортировка по цене и быстрая доставка в URL не подтверждены (браузерная проверка недоступна) — prefer_cheaper / delivery_preference не подставляем."
   },
   {
     "id": "wildberries",
@@ -43,9 +52,18 @@
       "color": "in_query_only",
       "brand": "in_query_only",
       "category_id": "unsupported",
-      "features": "in_query_only"
+      "features": "in_query_only",
+      "sort_price_asc": "unconfirmed",
+      "delivery_fastest": "unconfirmed"
     },
-    "verification_note": "Канонический путь /catalog/0/search.aspx?search=. Автопроверка упирается в CAPTCHA. Цену в URL не подставляем, пока не проверим вручную. Цвет/размер/бренд/тип — словами в запросе."
+    "sort_price_asc_verified": false,
+    "sort_price_asc_param": null,
+    "sort_price_asc_value": null,
+    "delivery_fastest_verified": false,
+    "delivery_fastest_kind": null,
+    "delivery_fastest_param": null,
+    "delivery_fastest_value": null,
+    "verification_note": "Канонический путь /catalog/0/search.aspx?search=. Автопроверка упирается в CAPTCHA. Цену в URL не подставляем, пока не проверим вручную. Цвет/размер/бренд/тип — словами в запросе. Сортировка по цене и быстрая доставка в URL не подтверждены — параметры не подставляем."
   },
   {
     "id": "yandex_market",
@@ -72,8 +90,17 @@
       "brand": "in_query_only",
       "category_id": "unsupported",
       "features": "in_query_only",
+      "sort_price_asc": "unconfirmed",
+      "delivery_fastest": "unconfirmed",
       "multi": false
     },
+    "sort_price_asc_verified": false,
+    "sort_price_asc_param": null,
+    "sort_price_asc_value": null,
+    "delivery_fastest_verified": false,
+    "delivery_fastest_kind": null,
+    "delivery_fastest_param": null,
+    "delivery_fastest_value": null,
     "verification": {
       "price_min": {
         "at": "2026-10-27",
@@ -86,7 +113,7 @@
         "note": "priceto в диапазоне с pricefrom"
       }
     },
-    "verification_note": "priceto подтверждён 2026-10-18. pricefrom+priceto проверены в браузере 2026-10-27: поля «От»/«До» на выдаче = 5000/15000. Цвет/размер/бренд в URL-фильтры не маппим (нет стабильных публичных ID)."
+    "verification_note": "priceto подтверждён 2026-10-18. pricefrom+priceto проверены в браузере 2026-10-27: поля «От»/«До» на выдаче = 5000/15000. Цвет/размер/бренд в URL-фильтры не маппим (нет стабильных публичных ID). Сортировка по цене и быстрая доставка в URL не подтверждены (CAPTCHA при проверке) — prefer_cheaper / delivery_preference не подставляем."
   },
   {
     "id": "avito",
@@ -181,9 +208,36 @@
       "color": "in_query_only",
       "brand": "in_query_only",
       "category_id": "unsupported",
-      "features": "in_query_only"
+      "features": "in_query_only",
+      "sort_price_asc": "verified_browser",
+      "sort_price_desc": "verified_browser",
+      "delivery_fastest": "unconfirmed"
     },
-    "verification_note": "HTTP 200 на /sch/i.html?_nkw=. Рублёвый диапазон в eBay URL не подставляем (нет курса) — задайте фильтр вручную. Описательные критерии — словами в запросе."
+    "sort_price_asc_verified": true,
+    "sort_price_asc_param": "_sop",
+    "sort_price_asc_value": "15",
+    "sort_price_asc_label": "Сортировка: цена с учётом доставки по возрастанию",
+    "sort_price_desc_verified": true,
+    "sort_price_desc_param": "_sop",
+    "sort_price_desc_value": "16",
+    "sort_price_desc_label": "Сортировка: цена с учётом доставки по убыванию",
+    "delivery_fastest_verified": false,
+    "delivery_fastest_kind": null,
+    "delivery_fastest_param": null,
+    "delivery_fastest_value": null,
+    "verification": {
+      "sort_price_asc": {
+        "at": "2026-10-28",
+        "how": "browser_filter_value",
+        "note": "UI «Precio + Envío: más bajo primero» → &_sop=15; reload сохраняет подпись Ordenar"
+      },
+      "sort_price_desc": {
+        "at": "2026-10-28",
+        "how": "browser_filter_value",
+        "note": "UI «Precio + Envío: más alto primero» → &_sop=16; reload сохраняет подпись Ordenar"
+      }
+    },
+    "verification_note": "HTTP 200 на /sch/i.html?_nkw=. Сортировка _sop=15/16 — цена с учётом доставки (не только цена товара), подтверждена 2026-10-28. Рублёвый бюджет в URL не подставляем. Быстрая доставка как отдельный URL-фильтр не подтверждена."
   },
   {
     "id": "vestiaire",
@@ -227,7 +281,7 @@
       "brand": "in_query_only",
       "features": "in_query_only"
     },
-    "verification_note": "Поиск search/?q=; товары/цены на витрине видны. URL-фильтр цены не подтверждён."
+    "verification_note": "search/?q= открывает «Результаты поиска» с товарами (браузер 2026-10-28). Сортировку/бюджет в URL на search не подставляем (не подтверждены на этом пути). Быстрой доставки на выдаче не найдено."
   },
   {
     "id": "peak_concept",
@@ -244,9 +298,40 @@
       "size": "in_query_only",
       "color": "in_query_only",
       "brand": "in_query_only",
-      "features": "in_query_only"
+      "features": "in_query_only",
+      "sort_price_asc": "verified_browser",
+      "sort_price_desc": "verified_browser",
+      "delivery_fastest": "unsupported"
     },
-    "verification_note": "catalog/?q= показывает релевантные товары с ценами в браузере; прямой GET сервера 403."
+    "sort_price_asc_verified": true,
+    "sort_price_asc_param": "SORT",
+    "sort_price_asc_value": "PROPERTY_RETAIL_PRICE_MIN",
+    "sort_price_asc_extra_params": {
+      "ORDER": "ASC"
+    },
+    "sort_price_desc_verified": true,
+    "sort_price_desc_param": "SORT",
+    "sort_price_desc_value": "PROPERTY_RETAIL_PRICE_MIN",
+    "sort_price_desc_extra_params": {
+      "ORDER": "DESC"
+    },
+    "delivery_fastest_verified": false,
+    "delivery_fastest_kind": null,
+    "delivery_fastest_param": null,
+    "delivery_fastest_value": null,
+    "verification": {
+      "sort_price_asc": {
+        "at": "2026-10-28",
+        "how": "browser_filter_value",
+        "note": "UI «Сначала дешевле» → SORT=PROPERTY_RETAIL_PRICE_MIN&ORDER=ASC; reload сохраняет подпись"
+      },
+      "sort_price_desc": {
+        "at": "2026-10-28",
+        "how": "browser_filter_value",
+        "note": "UI «Сначала дороже» → SORT=PROPERTY_RETAIL_PRICE_MIN&ORDER=DESC; reload сохраняет подпись"
+      }
+    },
+    "verification_note": "catalog/?q= в браузере. Сортировка asc/desc подтверждена 2026-10-28 (SORT+ORDER). Бюджет URL не включаем (FILTER в UI не отразился). Фильтра быстрой доставки на выдаче не найдено."
   },
   {
     "id": "lime",
@@ -265,7 +350,7 @@
       "brand": "in_query_only",
       "features": "in_query_only"
     },
-    "verification_note": "Own-brand витрина /ru_ru/; path /search давал 404 — не используем как search."
+    "verification_note": "Own-brand витрина /ru_ru/; path /search давал 404. В каталоге фильтры размер/цвет; сортировка по цене и бюджет в UI/URL не найдены. Быстрая доставка на выдаче не найдена."
   },
   {
     "id": "maag",
@@ -284,7 +369,7 @@
       "brand": "in_query_only",
       "features": "in_query_only"
     },
-    "verification_note": "Own-brand главная; buyers/ подтверждены. Без выдуманного search."
+    "verification_note": "Own-brand главная. Сортировка «Цена ниже» в UI есть (javascript:void), в URL не попадает — передача ссылкой не подтверждена. Бюджет и быстрая доставка на выдаче не найдены."
   },
   {
     "id": "the_cultt",
@@ -312,9 +397,10 @@
     "type": "vintage",
     "url_template": "https://collect.tsum.ru/women/catalog",
     "price_currency": "RUB",
-    "verified": true,
+    "verified": false,
     "price_filter_verified": false,
     "price_min_filter_verified": false,
+    "disabled_reason": "Исключён из активной выдачи по решению владельца проекта",
     "filter_capabilities": {
       "price_min": "manual",
       "price_max": "manual",
@@ -323,26 +409,60 @@
       "brand": "in_query_only",
       "features": "in_query_only"
     },
-    "verification_note": "Переход на каталог; HTML-карточки/цены не собираем (terms 4.6)."
+    "verification_note": "Продуктово исключён из выдачи; HTML-карточки/цены не собираем (terms 4.6 сохранён в реестре)."
   },
   {
     "id": "spin4spin",
     "name": "SPIN4SPIN",
     "type": "vintage",
-    "url_template": "https://spin4spin.com/catalog",
+    "url_template": "https://spin4spin.com/search?q={q}",
     "price_currency": "RUB",
+    "price_min_param": "price_min",
+    "price_min_format": "{min}",
+    "price_max_param": "price_max",
+    "price_format": "{max}",
     "verified": true,
     "price_filter_verified": false,
     "price_min_filter_verified": false,
     "filter_capabilities": {
-      "price_min": "manual",
-      "price_max": "manual",
+      "price_min": "unconfirmed",
+      "price_max": "unconfirmed",
       "size": "in_query_only",
       "color": "in_query_only",
       "brand": "in_query_only",
-      "features": "in_query_only"
+      "features": "in_query_only",
+      "sort_price_asc": "unconfirmed",
+      "sort_price_desc": "unconfirmed",
+      "delivery_fastest": "unsupported"
     },
-    "verification_note": "Переход на каталог без HTML-сбора."
+    "sort_price_asc_verified": false,
+    "sort_price_asc_param": "sort",
+    "sort_price_asc_value": "price_asc",
+    "sort_price_desc_verified": false,
+    "sort_price_desc_param": "sort",
+    "sort_price_desc_value": "price_desc",
+    "delivery_fastest_verified": false,
+    "delivery_fastest_kind": null,
+    "delivery_fastest_param": null,
+    "delivery_fastest_value": null,
+    "verification": {
+      "search_q": {
+        "at": "2026-10-28",
+        "how": "browser_filter_value",
+        "note": "/search?q=куртка → заголовок «Поиск «куртка»», товары в выдаче"
+      },
+      "catalog_price_sort": {
+        "at": "2026-10-28",
+        "how": "browser_filter_value",
+        "note": "На /catalog price_min/price_max+sort=price_asc отражены в UI и выдаче (цены в диапазоне). Не переносим на /search."
+      },
+      "search_price_sort": {
+        "at": "2026-10-28",
+        "how": "browser_filter_value",
+        "note": "На /search?q=…&price_min&price_max&sort параметры в URL есть, но UI фильтров нет; в выдаче цены вне диапазона (напр. 248000 при max=50000) — не подтверждено"
+      }
+    },
+    "verification_note": "Рабочий поиск: /search?q= (2026-10-28). Бюджет и asc/desc подтверждены только на /catalog — на текущий шаблон /search не переносим и в ссылки не подставляем. Быстрой доставки нет."
   },
   {
     "id": "befree",
@@ -513,6 +633,6 @@
       "brand": "in_query_only",
       "features": "in_query_only"
     },
-    "verification_note": "Собственный бренд 12 STOREEZ. Автоматический доступ 403 — не юр. запрет; витрина без сбора каталога."
+    "verification_note": "Собственный бренд 12 STOREEZ. На catalog/… UI «По возрастанию цены» → ?sort=price_ask (reload ок); на главной шаблона (?sort=) витрина без сортировки — в ссылки не подставляем. Бюджет UI есть, URL после Применить не подтверждён. Быстрая доставка на выдаче не найдена."
   }
 ]

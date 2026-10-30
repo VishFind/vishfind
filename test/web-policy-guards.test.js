@@ -46,7 +46,7 @@ test('нет совпадений allowlist → пусто, без raw fallback'
   assert.equal(out.length, 0);
 });
 
-test('webFetch: неизвестный домен запрещён; CULTT запрещён', () => {
+test('webFetch: неизвестный домен запрещён; CULTT и TSUM запрещены', () => {
   assert.equal(
     policy.webFetchAllowedForUrl('https://unknown-shop.example/item'),
     false
@@ -57,6 +57,10 @@ test('webFetch: неизвестный домен запрещён; CULTT зап
   );
   assert.equal(
     policy.webFetchAllowedForUrl('https://collect.tsum.ru/item/1'),
+    false
+  );
+  assert.equal(
+    policy.webFetchAllowedForUrl('https://www.tsum.ru/catalog/1'),
     false
   );
 });
