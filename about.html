@@ -47,11 +47,12 @@
         <img class="brand-logo brand-logo--dark" src="images/logo-vishfind-dark.png" alt="" width="180" height="64" decoding="async"/>
       </a>
       <nav class="header-strip" aria-label="Разделы и личные данные">
-        <a class="header-item" href="/about.html" aria-current="page">О проекте</a>
-        <a class="header-item" href="/?open=saved">Избранное</a>
-        <a class="header-item" href="/?open=history">История</a>
-        <a class="header-item" href="/contacts.html">Контакты</a>
-        <button type="button" class="header-item theme-toggle theme-toggle--mobile">Тема</button>
+        <div class="header-strip-scroll">
+          <a class="header-item" href="/about.html" aria-current="page">О проекте</a>
+          <a class="header-item" href="/?open=saved">Избранное</a>
+          <a class="header-item" href="/?open=history">История</a>
+        </div>
+        <a class="header-item header-item--contacts" href="/contacts.html">Контакты</a>
       </nav>
       <div class="header-right">
         <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="site-nav">Меню</button>
@@ -60,7 +61,7 @@
           <a href="/about.html" aria-current="page">О проекте</a>
           <a href="/contacts.html">Контакты</a>
         </nav>
-        <button type="button" class="theme-toggle theme-toggle--desktop" id="theme-toggle">Тема</button>
+        <button type="button" class="theme-toggle" id="theme-toggle">Тема</button>
       </div>
     </div>
   </header>
