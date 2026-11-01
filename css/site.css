@@ -209,7 +209,7 @@ html[data-theme='light'] .glass {
 .site-header .wrap {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   padding: 10px 14px 10px 16px;
   overflow: visible;
@@ -218,6 +218,7 @@ html[data-theme='light'] .glass {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-left: auto;
   position: relative;
   z-index: 1;
 }
@@ -254,8 +255,57 @@ html[data-theme='dark'] .brand-logo--dark {
 .brand:hover {
   opacity: 0.92;
 }
-.header-mobile-links {
+/* Единая полоса: на десктопе — только Избранное/История; на мобиле — полный ряд */
+.header-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.header-strip > a.header-item,
+.header-strip .theme-toggle--mobile {
   display: none;
+}
+.header-item {
+  appearance: none;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin: 0;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: var(--glass);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.header-item:hover {
+  background: var(--glass-strong, var(--glass));
+  border-color: var(--stroke);
+  color: var(--ink);
+  opacity: 0.96;
+}
+.header-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+.header-item[aria-current='page'],
+.header-item.is-active,
+.header-item[aria-expanded='true'] {
+  border-color: var(--accent);
+  color: var(--ink);
+  background: var(--accent-dim);
 }
 
 /* Полноэкранная приветственная заставка (один раз за вкладку) */
@@ -1524,87 +1574,64 @@ html {
   overflow-wrap: anywhere;
 }
 
-/* Мобильная шапка: 2 строки — бренд; тема + избранное + история. Без бургер-меню. */
+/* Мобильная шапка: одна строка — логотип, О проекте, Избранное, История, Контакты */
 @media (max-width: 720px) {
   .site-header .wrap {
-    flex-direction: column;
+    flex-direction: row;
     flex-wrap: nowrap;
-    align-items: stretch;
+    align-items: center;
     justify-content: flex-start;
-    gap: 8px;
-    padding: 10px 12px;
+    gap: 6px;
+    padding: 8px 8px;
+    overflow: hidden;
   }
   .site-header .brand {
-    display: flex;
-    width: 100%;
+    display: inline-flex;
+    flex: 0 0 auto;
+    width: auto;
     min-height: 0;
   }
   .site-header .brand-logo {
-    height: clamp(40px, 11vw, 52px);
-    max-width: min(240px, 88vw);
+    height: clamp(24px, 6.5vw, 32px);
+    max-width: min(96px, 28vw);
   }
-  .site-header .header-right {
+  .site-header .header-strip {
     display: flex;
+    flex: 1 1 auto;
     flex-wrap: nowrap;
     align-items: center;
-    justify-content: flex-start;
-    gap: 6px;
-    width: 100%;
-  }
-  .site-header .header-tools {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: center;
-    gap: 6px;
-    width: auto;
-    order: 2;
-  }
-  .site-header .theme-toggle {
-    order: 1;
-    flex: 0 0 auto;
-    white-space: nowrap;
-  }
-  .site-header .header-tool {
-    flex: 0 1 auto;
-    font-size: 0.75rem;
-    padding: 6px 8px;
+    gap: 5px;
     min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
   }
-  .site-header .nav-toggle,
-  .site-header .nav,
-  .site-header.is-nav-open .nav {
+  .site-header .header-strip::-webkit-scrollbar {
     display: none;
   }
-  .site-header .header-mobile-links {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 14px;
-    width: 100%;
-    margin: 0;
-    padding: 2px 0 0;
-    border-top: 1px solid var(--stroke-soft);
-  }
-  .site-header .header-mobile-links a {
-    color: var(--muted);
-    text-decoration: none;
-    font-size: 0.84rem;
-    font-weight: 600;
-    min-height: 36px;
+  .site-header .header-strip > a.header-item,
+  .site-header .header-strip .theme-toggle--mobile {
     display: inline-flex;
-    align-items: center;
-    padding: 4px 0;
-    border-bottom: 1px solid transparent;
   }
-  .site-header .header-mobile-links a:hover,
-  .site-header .header-mobile-links a[aria-current='page'] {
-    color: var(--ink);
-    border-bottom-color: var(--accent);
+  .site-header .header-item {
+    flex: 0 0 auto;
+    min-height: 32px;
+    padding: 4px 7px;
+    font-size: 0.66rem;
+    font-weight: 600;
+    border-radius: 999px;
   }
-  .site-header .header-mobile-links a:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px var(--accent-dim);
-    border-radius: 4px;
+  .site-header .header-count {
+    margin-left: 4px;
+    min-width: 1.2em;
+    padding: 0 4px;
+    font-size: 0.62rem;
+  }
+  /* Тема и десктоп-навигация скрыты: мобильный ряд строго логотип + 4 пункта */
+  .site-header .header-right {
+    display: none;
   }
   #dropzone {
     display: none !important;
@@ -2291,9 +2318,6 @@ body.criteria-sheet-open {
   gap: 6px;
 }
 .header-tool {
-  min-height: 40px;
-  padding: 6px 10px;
-  font-size: 0.78rem;
   white-space: nowrap;
 }
 .header-count {

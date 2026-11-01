@@ -54,27 +54,26 @@
         <img class="brand-logo brand-logo--light" src="images/logo-vishfind-light.png" alt="" width="180" height="64" decoding="async"/>
         <img class="brand-logo brand-logo--dark" src="images/logo-vishfind-dark.png" alt="" width="180" height="64" decoding="async"/>
       </a>
+      <nav class="header-strip" aria-label="Разделы и личные данные">
+        <a class="header-item" href="/about.html">О проекте</a>
+        <button type="button" class="header-item header-tool" id="btn-saved" aria-haspopup="dialog" aria-controls="app-sheet" aria-expanded="false">
+          Избранное<span class="header-count" id="saved-count" hidden></span>
+        </button>
+        <button type="button" class="header-item header-tool" id="btn-history" aria-haspopup="dialog" aria-controls="app-sheet" aria-expanded="false">
+          История
+        </button>
+        <a class="header-item" href="/contacts.html">Контакты</a>
+        <button type="button" class="header-item theme-toggle theme-toggle--mobile" aria-pressed="true">Тема</button>
+      </nav>
       <div class="header-right">
-        <div class="header-tools" role="group" aria-label="Личные данные в браузере">
-          <button type="button" class="btn btn-ghost header-tool" id="btn-saved" aria-haspopup="dialog" aria-controls="app-sheet" aria-expanded="false">
-            Избранное<span class="header-count" id="saved-count" hidden></span>
-          </button>
-          <button type="button" class="btn btn-ghost header-tool" id="btn-history" aria-haspopup="dialog" aria-controls="app-sheet" aria-expanded="false">
-            История
-          </button>
-        </div>
         <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="site-nav">Меню</button>
         <nav class="nav" id="site-nav" aria-label="Основное">
           <a href="/" aria-current="page">Поиск</a>
           <a href="/about.html">О проекте</a>
           <a href="/contacts.html">Контакты</a>
         </nav>
-        <button type="button" class="theme-toggle" id="theme-toggle" aria-pressed="true">Тема</button>
+        <button type="button" class="theme-toggle theme-toggle--desktop" id="theme-toggle" aria-pressed="true">Тема</button>
       </div>
-      <nav class="header-mobile-links" aria-label="Разделы сайта">
-        <a href="/about.html">О проекте</a>
-        <a href="/contacts.html">Контакты</a>
-      </nav>
     </div>
   </header>
 

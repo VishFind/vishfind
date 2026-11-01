@@ -2326,5 +2326,16 @@
   // Восстановление — только явным кликом по истории/избранному.
   input.value = '';
   loadHealth();
+
+  try {
+    const openMode = new URLSearchParams(location.search).get('open');
+    if (openMode === 'saved' && btnSaved) openSheet('saved', btnSaved);
+    if (openMode === 'history' && btnHistory) openSheet('history', btnHistory);
+    if (openMode === 'saved' || openMode === 'history') {
+      const cleaned = new URL(location.href);
+      cleaned.searchParams.delete('open');
+      history.replaceState({}, '', cleaned.pathname + cleaned.search + cleaned.hash);
+    }
+  } catch (_) {}
 })();
 
