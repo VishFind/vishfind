@@ -21,6 +21,27 @@ scripts/photo-pipeline-compare.json
 isearch-project-backup.zip
 images (1).jpg
 
+# Локальный счётчик платного этапа (не для production-профилей)
+data/paid-call-stage.json
+
+# Импортированный каталог Takprodam / Admitad (партнёрские данные, не в Git)
+data/takprodam-catalog/**
+!data/takprodam-catalog/.gitkeep
+!data/takprodam-catalog/catalog.json.gz.enc
+data/takprodam-catalog/.auth-header-b64
+
+# Admitad / CPA фиды и собранный каталог (секреты в URL, не в Git)
+data/admitad-feeds/raw/
+data/admitad-feeds/urls.local.json
+data/admitad-feeds/catalog.json
+data/admitad-feeds/CATALOG_DECRYPT_KEY.local
+data/admitad-feeds/*.xml
+data/admitad-feeds/*.yml
+data/admitad-feeds/*.csv
+data/admitad-feeds/*.zip
+!data/admitad-feeds/.gitkeep
+!data/admitad-feeds/urls.local.example.json
+
 # Снимки рабочей копии (секреты в них не кладём, в Git тоже)
 archives/
 

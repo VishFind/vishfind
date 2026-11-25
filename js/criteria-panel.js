@@ -58,7 +58,18 @@
     {
       id: 'acc',
       label: 'Аксессуары',
-      items: ['сумка', 'рюкзак', 'ремень', 'шапка', 'кепка', 'шарф', 'перчатки', 'украшения'],
+      items: [
+        'сумка',
+        'рюкзак',
+        'ремень',
+        'шапка',
+        'кепка',
+        'шарф',
+        'перчатки',
+        'украшения',
+        'браслет',
+        'портмоне',
+      ],
     },
   ];
 
@@ -1012,18 +1023,9 @@
     });
 
     resetAllBtn.addEventListener('click', () => {
+      // Полный сброс: без sticky clear, чтобы следующий текстовый запрос снова разбирался.
       Object.assign(state, emptyState());
-      state.cleared = {
-        price: true,
-        price_min: true,
-        price_max: true,
-        category: true,
-        color: true,
-        size: true,
-        brand: true,
-        rest: true,
-        features: true,
-      };
+      state.cleared = {};
       closePanel();
       notify();
     });
@@ -1103,6 +1105,89 @@
     return getApi();
   }
 
+  function listSignature(list) {
+    return asList(list)
+      .map((s) => String(s).toLowerCase().replace(/ё/g, 'е'))
+      .sort()
+      .join('\u0001');
+  }
+
+  function scalarSignature(v) {
+    if (v == null || v === '') return '';
+    return String(v).trim().toLowerCase().replace(/ё/g, 'е');
+  }
+
+  /**
+   * Удаление фото: нетронутые относительно afterPhoto поля → before;
+   * явно изменённые поля сохраняются. Одна правка не подтверждает весь набор.
+   * (зеркало lib/criteria-model.mergeAfterPhotoClear)
+   */
+  function mergeAfterPhotoClear(before, afterPhoto, current) {
+    const blank = emptyState();
+    const b = before && typeof before === 'object' ? before : blank;
+    const a = afterPhoto && typeof afterPhoto === 'object' ? afterPhoto : null;
+    const c = current && typeof current === 'object' ? current : blank;
+    if (!a) {
+      return Object.assign(emptyState(), {
+        categories: Array.isArray(c.categories) ? c.categories.slice() : asList(c.category),
+        colors: Array.isArray(c.colors) ? c.colors.slice() : asList(c.color),
+        sizes: Array.isArray(c.sizes) ? c.sizes.slice() : asList(c.size),
+        brands: Array.isArray(c.brands) ? c.brands.slice() : asList(c.brand),
+        rest: c.rest != null ? String(c.rest) : '',
+        budget_min: c.budget_min != null && c.budget_min !== '' ? c.budget_min : '',
+        budget_max: c.budget_max != null && c.budget_max !== '' ? c.budget_max : '',
+        price_sort: c.price_sort || PRICE_SORT_DEFAULT,
+        prefer_cheaper: !!(c.prefer_cheaper || c.price_sort === PRICE_SORT_ASC),
+        cleared: c.cleared && typeof c.cleared === 'object' ? Object.assign({}, c.cleared) : {},
+      });
+    }
+
+    function pickList(field) {
+      const cur = Array.isArray(c[field]) ? c[field] : [];
+      const aft = Array.isArray(a[field]) ? a[field] : [];
+      const bef = Array.isArray(b[field]) ? b[field] : [];
+      if (listSignature(cur) === listSignature(aft)) return bef.slice();
+      return cur.slice();
+    }
+
+    function pickRest() {
+      const cur = c.rest != null ? String(c.rest) : '';
+      const aft = a.rest != null ? String(a.rest) : '';
+      const bef = b.rest != null ? String(b.rest) : '';
+      if (scalarSignature(cur) === scalarSignature(aft)) return bef;
+      return cur;
+    }
+
+    function pickBudget(field) {
+      const norm = (v) => (v == null || v === '' ? null : v);
+      const cur = norm(c[field]);
+      const aft = norm(a[field]);
+      const bef = norm(b[field]);
+      if (cur === aft || (cur == null && aft == null)) {
+        return bef == null ? '' : bef;
+      }
+      return cur == null ? '' : cur;
+    }
+
+    const price_sort =
+      (c.price_sort || PRICE_SORT_DEFAULT) === (a.price_sort || PRICE_SORT_DEFAULT)
+        ? b.price_sort || PRICE_SORT_DEFAULT
+        : c.price_sort || PRICE_SORT_DEFAULT;
+
+    return Object.assign(emptyState(), {
+      categories: pickList('categories'),
+      colors: pickList('colors'),
+      sizes: pickList('sizes'),
+      brands: pickList('brands'),
+      rest: pickRest() || '',
+      budget_min: pickBudget('budget_min'),
+      budget_max: pickBudget('budget_max'),
+      price_sort,
+      prefer_cheaper: price_sort === PRICE_SORT_ASC,
+      cleared: {},
+    });
+  }
+
   window.VishFindCriteria = {
     COLOR_OPTIONS,
     CATEGORY_GROUPS,
@@ -1120,5 +1205,6 @@
     formatThousands,
     parseMoneyInput,
     asList,
+    mergeAfterPhotoClear,
   };
 })();

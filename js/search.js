@@ -4,7 +4,8 @@
   const input = document.getElementById('q');
   const submitBtn = document.getElementById('btn-submit');
   const newQueryBtn = document.getElementById('btn-new-query');
-  const newQueryRow = document.getElementById('new-query-row');
+  const saveQueryBtn = document.getElementById('btn-save-query');
+  const queryActions = document.getElementById('query-actions');
   const photoBtn = document.getElementById('btn-photo');
   const fileInput = document.getElementById('file-input');
   const preview = document.getElementById('photo-preview');
@@ -47,6 +48,8 @@
   let imageDataUrl = null;
   let busy = false;
   let aiEnabled = false;
+  /** Фото можно отправлять: AI включён и нет исчерпанного лимита платного этапа. */
+  let photoVisionAvailable = false;
   let ebayConfigured = false;
   /** Серверная возможность WEB_SEARCH (не включает поиск сама по себе). */
   let webSearchServerEnabled = false;
@@ -61,6 +64,10 @@
   let scrollGuardBound = false;
   /** После успешного vision не шлём image повторно при смене бюджета/сортировки. */
   let photoAnalysisDone = false;
+  /** Снимок критериев до отправки фото. */
+  let criteriaBeforePhoto = null;
+  /** Снимок сразу после успешного vision — для полевого сравнения при удалении фото. */
+  let criteriaAfterPhoto = null;
   /** Клиентский фильтр групп уже полученных ссылок: all|official|reseller|other|marketplace */
   let linkGroupFilter = 'all';
 
@@ -145,16 +152,43 @@
     busy = v;
     submitBtn.disabled = v;
     input.disabled = v;
-    if (photoBtn) photoBtn.disabled = v;
+    if (photoBtn) photoBtn.disabled = v || !photoVisionAvailable;
     // «Новый запрос» остаётся доступной, чтобы отменить текущий поиск.
+    if (newQueryBtn) newQueryBtn.disabled = false;
+    if (saveQueryBtn) saveQueryBtn.disabled = !lastData;
     submitBtn.textContent = v ? 'Ищем…' : 'Искать';
-    const analyzing = !!(v && imageDataUrl && aiEnabled);
+    const analyzing = !!(v && imageDataUrl && photoVisionAvailable);
     if (analyzing) setPhotoStatus('analyzing');
     else if (!v && imageDataUrl && preview && !preview.classList.contains('is-fail')) setPhotoStatus('ready');
   }
 
+  function setQueryActionsVisible(visible) {
+    if (queryActions) queryActions.hidden = !visible;
+    if (saveQueryBtn) saveQueryBtn.disabled = !visible || !lastData;
+  }
+
   function setNewQueryVisible(visible) {
-    if (newQueryRow) newQueryRow.hidden = !visible;
+    setQueryActionsVisible(visible);
+  }
+
+  function saveCurrentQuery() {
+    const p = (lastData && lastData.parsed) || {};
+    const text =
+      (lastArgs && lastArgs.query) ||
+      input.value.trim() ||
+      p.search_phrase ||
+      '';
+    if (!text) {
+      setStatus('Нечего сохранять: запрос пустой.', 'error');
+      return;
+    }
+    addSaved({
+      type: 'query',
+      item: thingName(p, text, !!(lastData && lastData.photo_used)),
+      title: thingName(p, text, !!(lastData && lastData.photo_used)),
+      query: text,
+      search_type: lastData && lastData.photo_used ? 'photo' : 'text',
+    });
   }
 
   function resetCurrentSearch() {
@@ -169,8 +203,7 @@
     lastData = null;
     lastArgs = null;
     photoAnalysisDone = false;
-    pickedOffers = [];
-    renderCompare();
+    setPickedOffers([]);
 
     if (criteriaApi && criteriaApi.destroy) {
       try { criteriaApi.destroy(); } catch (_) { /* ignore */ }
@@ -310,9 +343,10 @@
     return item;
   }
 
-  function renderRecognizedSummary(p, data) {
-    const panel = el('div', 'criteria-panel glass recog-summary');
-    panel.appendChild(el('h2', null, 'Что распозналось'));
+  function renderRecognizedSummary(p, data, options) {
+    const opts = options || {};
+    const panel = el('div', opts.embedded ? 'recog-summary' : 'criteria-panel glass recog-summary');
+    if (!opts.embedded) panel.appendChild(el('h2', null, 'Что распозналось'));
 
     panel.appendChild(el('p', 'source-passed-label', '1. Распознано и выбрано'));
     const line = summaryLine(p);
@@ -411,6 +445,10 @@
 
   const HISTORY_KEY = 'vishfind-history';
 
+  function historyStorageKey() {
+    return storageKey(HISTORY_KEY);
+  }
+
   function hintList(p, triedPhotoWithoutAi, success) {
     const hints = [];
     if (!p) return hints;
@@ -468,7 +506,7 @@
     const hints = hintList(p, triedPhotoWithoutAi, success);
     if (!hints.length) {
       host.appendChild(
-        el('p', 'hints-note', 'Можно уточнить запрос или открыть «Что распозналось?»')
+        el('p', 'hints-note', 'Можно уточнить запрос фильтрами выше или открыть «Как распознан запрос» внизу выдачи.')
       );
       return;
     }
@@ -587,6 +625,37 @@
     });
   }
 
+  function snapshotCriteriaState() {
+    if (!criteriaApi || !Criteria || typeof Criteria.emptyState !== 'function') return null;
+    try {
+      const a = criteriaApi.attributes || {};
+      const base = Criteria.emptyState();
+      return Object.assign(base, {
+        categories: Array.isArray(a.categories) ? a.categories.slice() : [],
+        colors: Array.isArray(a.colors) ? a.colors.slice() : [],
+        sizes: Array.isArray(a.sizes) ? a.sizes.slice() : [],
+        brands: Array.isArray(a.brands) ? a.brands.slice() : [],
+        rest: a.rest || '',
+        budget_min: a.budget_min != null ? a.budget_min : null,
+        budget_max: a.budget_max != null ? a.budget_max : null,
+        budget: a.budget != null ? a.budget : null,
+        price_sort: criteriaApi.price_sort || 'default',
+        prefer_cheaper: !!criteriaApi.prefer_cheaper,
+        cleared: {},
+      });
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function remountCriteria(state) {
+    if (!Criteria || !userCriteriaHost || !state) return;
+    if (criteriaApi && criteriaApi.destroy) {
+      try { criteriaApi.destroy(); } catch (_) { /* ignore */ }
+    }
+    criteriaApi = Criteria.mount(userCriteriaHost, state, criteriaMountOpts());
+  }
+
   function clearPhoto() {
     imageDataUrl = null;
     photoAnalysisDone = false;
@@ -595,6 +664,24 @@
     if (previewImg) previewImg.removeAttribute('src');
     if (photoBtn) photoBtn.classList.remove('is-active');
     if (preview) preview.classList.remove('is-analyzing', 'is-ready', 'is-fail');
+    // Полевое слияние: нетронутые photo-поля → до фото; явно изменённые сохраняются.
+    if (
+      lastData &&
+      lastData.photo_used &&
+      criteriaBeforePhoto &&
+      Criteria &&
+      typeof Criteria.mergeAfterPhotoClear === 'function'
+    ) {
+      const current = snapshotCriteriaState();
+      const merged = Criteria.mergeAfterPhotoClear(
+        criteriaBeforePhoto,
+        criteriaAfterPhoto,
+        current
+      );
+      remountCriteria(merged);
+    }
+    criteriaBeforePhoto = null;
+    criteriaAfterPhoto = null;
   }
 
   function setReady(state, label) {
@@ -605,7 +692,12 @@
   }
 
   async function takePhoto(file) {
-    if (!file || busy || !aiEnabled) return;
+    if (!file || busy || !photoVisionAvailable) {
+      if (file && aiEnabled && !photoVisionAvailable) {
+        setStatus('Разбор фото сейчас недоступен. Опишите вещь текстом.', 'error');
+      }
+      return;
+    }
     try {
       if (photoMeta) photoMeta.textContent = 'Загрузка';
       setStatus('Загрузка фото…');
@@ -625,11 +717,218 @@
   const CURRENCY_SYMBOL = { RUB: '₽', USD: '$', EUR: '€' };
 
   function formatOfferPrice(offer) {
-    const n = Number(offer && offer.price);
-    if (!Number.isFinite(n)) return '';
+    const mode = String((offer && offer.price_mode) || '');
+    if (mode === 'clarify' || mode === 'raw_unspecified_currency') return 'Уточнить цену';
+    if (offer == null || offer.price == null || offer.price === '') return 'Уточнить цену';
+    const n = Number(offer.price);
+    if (!Number.isFinite(n)) return 'Уточнить цену';
     const code = String((offer && offer.currency) || '').toUpperCase();
+    // Без подтверждённой валюты число не показываем как обычную цену.
+    if (!code) return 'Уточнить цену';
     const sym = CURRENCY_SYMBOL[code] || code;
     return (n.toLocaleString('ru-RU') + ' ' + sym).trim();
+  }
+
+  function catalogEmptyReason(offers) {
+    return (
+      (offers && offers.need_match && offers.need_match.reason) ||
+      (offers && offers.catalog && offers.catalog.reason) ||
+      null
+    );
+  }
+
+  function catalogUnavailableMessage(offers) {
+    const reason = catalogEmptyReason(offers);
+    if (reason === 'stale_source_only') {
+      return 'В каталоге VishFind есть похожие совпадения только в устаревших данных — сейчас их не показываем. Это не значит, что товара нет в продаже на сайтах магазинов.';
+    }
+    if (reason === 'budget_currency_unconfirmed') {
+      return (
+        (offers && offers.need_match && offers.need_match.note) ||
+        (offers && offers.note) ||
+        'В каталоге VishFind не удалось подтвердить бюджет: источник не передал валюту. Устаревшие цены не показываем.'
+      );
+    }
+    if (reason === 'exhausted_after_exclusions') {
+      return 'В текущем каталоге VishFind других подходящих предложений нет. Можно сбросить исключения или изменить требования.';
+    }
+    if (reason === 'no_matches' || reason === 'empty_query') {
+      return 'В доступном каталоге VishFind подходящих предложений нет. Запрос и выбранные критерии сохранены выше.';
+    }
+    return (
+      (offers && offers.need_match && offers.need_match.note) ||
+      (offers && offers.note) ||
+      (offers && offers.catalog && offers.catalog.empty_message) ||
+      'В доступном каталоге VishFind подходящих товаров пока не найдено.'
+    );
+  }
+
+  function catalogEmptyTitle(offers) {
+    const reason = catalogEmptyReason(offers);
+    if (reason === 'stale_source_only') return 'Совпадения только в устаревших данных';
+    if (reason === 'budget_currency_unconfirmed') return 'Бюджет не подтверждён каталогом';
+    return 'Подходящих предложений в каталоге нет';
+  }
+
+  /** Подсказки снять один действующий фильтр — без автоослабления. */
+  function appendFilterHints(host, offers) {
+    if (!host || !criteriaApi) return;
+    const attrs = criteriaApi.attributes || {};
+    const hints = [];
+    if (Array.isArray(attrs.colors) && attrs.colors.length) {
+      hints.push({
+        label: 'Убрать цвет «' + attrs.colors[0] + '»',
+        apply: () => {
+          const next = snapshotCriteriaState() || Criteria.emptyState();
+          next.colors = [];
+          next.cleared = Object.assign({}, next.cleared, { color: true });
+          remountCriteria(next);
+          runSearch(null, { skipPhoto: true, attributes_priority: true });
+        },
+      });
+    }
+    if (attrs.budget_max != null || attrs.budget_min != null || attrs.budget != null) {
+      hints.push({
+        label: 'Убрать ограничение цены',
+        apply: () => {
+          const next = snapshotCriteriaState() || Criteria.emptyState();
+          next.budget_min = null;
+          next.budget_max = null;
+          next.budget = null;
+          next.cleared = Object.assign({}, next.cleared, {
+            price: true,
+            price_min: true,
+            price_max: true,
+          });
+          remountCriteria(next);
+          runSearch(null, { skipPhoto: true, attributes_priority: true });
+        },
+      });
+    }
+    if (Array.isArray(attrs.brands) && attrs.brands.length) {
+      hints.push({
+        label: 'Убрать бренд «' + attrs.brands[0] + '»',
+        apply: () => {
+          const next = snapshotCriteriaState() || Criteria.emptyState();
+          next.brands = [];
+          next.cleared = Object.assign({}, next.cleared, { brand: true });
+          remountCriteria(next);
+          runSearch(null, { skipPhoto: true, attributes_priority: true });
+        },
+      });
+    }
+    if (!hints.length) return;
+    const row = el('div', 'offers-filter-hints');
+    row.appendChild(el('p', 'understood-phrase', 'Можно ослабить один выбранный фильтр:'));
+    hints.slice(0, 3).forEach((h) => {
+      const b = el('button', 'btn btn-ghost', h.label);
+      b.type = 'button';
+      b.addEventListener('click', h.apply);
+      row.appendChild(b);
+    });
+    host.appendChild(row);
+  }
+
+  function applyPhotoAvailabilityUi(lead) {
+    const leadPhoto =
+      'Опишите вещь или добавьте фото — подготовим переходы к поиску на сайтах. Цену и наличие смотрите у продавца.';
+    const leadText =
+      'Опишите вещь текстом — подготовим переходы к поиску на сайтах. Цену и наличие смотрите у продавца.';
+    const leadPhotoOff =
+      'Опишите вещь текстом. Разбор фото сейчас недоступен (лимит проверки исчерпан или AI выключен).';
+    const narrow =
+      typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 720px)').matches;
+    if (photoBtn) {
+      photoBtn.hidden = !aiEnabled;
+      photoBtn.disabled = !photoVisionAvailable;
+      photoBtn.setAttribute('aria-hidden', aiEnabled ? 'false' : 'true');
+      photoBtn.title = photoVisionAvailable
+        ? 'Добавить фото'
+        : 'Разбор фото сейчас недоступен';
+      photoBtn.setAttribute(
+        'aria-label',
+        photoVisionAvailable ? 'Добавить фото' : 'Разбор фото недоступен'
+      );
+      photoBtn.classList.toggle('is-unavailable', aiEnabled && !photoVisionAvailable);
+    }
+    if (dropzone) dropzone.hidden = !photoVisionAvailable || narrow;
+    if (lead) {
+      lead.textContent = photoVisionAvailable ? leadPhoto : aiEnabled ? leadPhotoOff : leadText;
+    }
+    if (photoVisionAvailable) {
+      setReady('', 'Поиск и фото готовы');
+    } else if (aiEnabled) {
+      setReady('is-idle', 'Поиск готов. Фото временно недоступно');
+      clearPhoto();
+      if (fileInput) fileInput.value = '';
+    } else {
+      setReady('is-idle', 'Поиск готов. Фото выключено');
+      clearPhoto();
+      if (fileInput) fileInput.value = '';
+    }
+  }
+
+  /** Цена в избранном: не подменять clarify на «Цена не указана». */
+  function formatSavedOfferPrice(item) {
+    if (!item) return 'Уточнить цену';
+    if (item.price_mode === 'clarify' || item.price_mode === 'raw_unspecified_currency') {
+      return 'Уточнить цену';
+    }
+    const formatted = formatOfferPrice(item);
+    if (formatted) return formatted;
+    return 'Уточнить цену';
+  }
+
+  function appendOfferLegal(host, legalText) {
+    if (!host || legalText == null || !String(legalText).trim()) return;
+    const legal = el('p', 'offers-legal');
+    legal.textContent = String(legalText);
+    host.appendChild(legal);
+  }
+
+  function appendOfferThumb(host, imageUrl) {
+    const url = safeUrl(imageUrl);
+    if (url) {
+      const img = document.createElement('img');
+      img.className = 'offers-thumb';
+      img.src = url;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.referrerPolicy = 'no-referrer';
+      img.addEventListener('error', () => {
+        img.replaceWith(el('div', 'offers-thumb-empty', 'нет фото'));
+      });
+      host.appendChild(img);
+      return;
+    }
+    host.appendChild(el('div', 'offers-thumb-empty', 'нет фото'));
+  }
+
+  function focusCriteriaForEdit() {
+    if (userCriteriaHost) {
+      userCriteriaHost.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
+      try { userCriteriaHost.focus(); } catch (_) { /* ignore */ }
+    }
+    setStatus('Измените фильтры выше и нажмите «Искать», чтобы обновить выдачу.', 'ok');
+  }
+
+  function isAffiliateOffer(item) {
+    const id = String((item && item.id) || '');
+    const source = String((item && item.source) || '');
+    const url = String((item && item.url) || '');
+    return (
+      id.indexOf('takprodam:') === 0 ||
+      id.indexOf('admitad:') === 0 ||
+      /takprodam/i.test(source) ||
+      /admitad/i.test(source) ||
+      /takprdm\.ru/i.test(url)
+    );
+  }
+
+  function offerMarkingOk(item) {
+    if (!isAffiliateOffer(item)) return true;
+    return !!(item && item.legal_text && String(item.legal_text).trim());
   }
 
   function formatOfferDate(iso) {
@@ -637,8 +936,21 @@
     return m ? m[3] + '.' + m[2] + '.' + m[1] : '';
   }
 
+  function formatFetchedAt(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
   function offerCurrency(offer) {
-    return String((offer && offer.currency) || 'RUB').toUpperCase();
+    const code = String((offer && offer.currency) || '').toUpperCase();
+    return code || '';
   }
 
   /** Сортировка без выдуманного курса: цена только внутри одной валюты. */
@@ -661,14 +973,89 @@
   }
 
   let pickedOffers = [];
+  let compareDiffsOnly = false;
+  let compareRenderSeq = 0;
+  const Compare = typeof VishFindCompare !== 'undefined' ? VishFindCompare : null;
+
+  function setPickedOffers(list) {
+    pickedOffers = Array.isArray(list) ? list.slice(0, 3) : [];
+    if (Saved && Saved.writeCompare) {
+      Saved.writeCompare(window.localStorage, pickedOffers, { key: storageKey('vishfind-compare') });
+    }
+    renderCompare();
+  }
+
+  function restoreCompare() {
+    if (!Saved || !Saved.loadCompare) {
+      pickedOffers = [];
+      renderCompare();
+      return;
+    }
+    const res = Saved.loadCompare(window.localStorage, { key: storageKey('vishfind-compare') });
+    pickedOffers = res.list || [];
+    renderCompare();
+  }
+
+  function needStorageOptions() {
+    return { key: storageKey('vishfind-need-match') };
+  }
+
+  function loadNeedState() {
+    if (!Saved || !Saved.loadNeedMatch) return { query: '', exclude_ids: [] };
+    return Saved.loadNeedMatch(window.localStorage, needStorageOptions()).state || {
+      query: '',
+      exclude_ids: [],
+    };
+  }
+
+  function writeNeedState(state) {
+    if (!Saved || !Saved.writeNeedMatch) return false;
+    return !!Saved.writeNeedMatch(window.localStorage, state, needStorageOptions()).ok;
+  }
+
+  function needExcludeIdsForQuery(query) {
+    const state = loadNeedState();
+    if (String(state.query || '') !== String(query || '')) return [];
+    return Array.isArray(state.exclude_ids) ? state.exclude_ids.slice() : [];
+  }
+
+  function syncNeedState(query, excludeIds) {
+    writeNeedState({
+      query: String(query || ''),
+      exclude_ids: Array.isArray(excludeIds) ? excludeIds : [],
+    });
+  }
 
   function offerKey(o) {
-    return [o && o.title, o && o.price, o && o.source, o && o.is_demo].join('|');
+    if (o && o.id) return String(o.id);
+    return [o && o.title, o && o.price, o && o.source, o && o.url, o && o.is_demo].join('|');
+  }
+
+  function storageProfile() {
+    try {
+      const name = new URLSearchParams(location.search).get('profile') || '';
+      if (/^[a-z0-9][a-z0-9-]{0,23}$/.test(name)) return name;
+    } catch (_) { /* нет location в необычном окружении */ }
+    return '';
+  }
+
+  function storageKey(base) {
+    const profile = storageProfile();
+    return profile ? base + '--' + profile : base;
+  }
+
+  function savedStorageOptions() {
+    const profile = storageProfile();
+    if (!profile) return {};
+    return {
+      key: storageKey('vishfind-saved'),
+      flag: storageKey('vishfind-saved-migrated-v1'),
+    };
   }
 
   function loadSaved() {
     if (!Saved) return [];
-    const res = Saved.loadSaved(window.localStorage);
+    const res = Saved.loadSaved(window.localStorage, savedStorageOptions());
     if (res.error && res.list.length === 0) {
       setStatus(res.error, 'error');
     } else if (res.migrated) {
@@ -682,7 +1069,7 @@
       setStatus('Модуль избранного не загружен.', 'error');
       return false;
     }
-    const res = Saved.writeSaved(window.localStorage, list);
+    const res = Saved.writeSaved(window.localStorage, list, savedStorageOptions());
     if (!res.ok) {
       setStatus(res.error || 'Не удалось сохранить избранное.', 'error');
       return false;
@@ -795,9 +1182,11 @@
 
   function addSaved(item) {
     const entry = Object.assign({
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       at: new Date().toISOString(),
     }, item);
+    if (!entry.id) {
+      entry.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    }
     const normalized = Saved ? Saved.normalizeSavedItem(entry).item : entry;
     if (!normalized) {
       setStatus('Не удалось подготовить запись избранного.', 'error');
@@ -835,10 +1224,47 @@
     return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
 
+  let savedRenderSeq = 0;
+
   function renderSaved() {
     updateSavedCount();
     if (sheetMode !== 'saved' || !sheetBody) return;
     const list = loadSaved();
+    const seq = ++savedRenderSeq;
+    const ids = list
+      .filter(
+        (row) =>
+          row &&
+          row.type === 'offer' &&
+          /^(takprodam|admitad):/i.test(String(row.id || ''))
+      )
+      .map((row) => String(row.id));
+    paintSaved(list);
+    if (!ids.length) return;
+    fetch('/api/catalog/offer-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids.slice(0, 30) }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (seq !== savedRenderSeq || sheetMode !== 'saved') return;
+        const statuses = data && data.statuses ? data.statuses : {};
+        paintSaved(list.map((row) => {
+          if (!row || row.type !== 'offer' || !statuses[row.id]) return row;
+          if (statuses[row.id] === 'not_in_catalog') {
+            return Object.assign({}, row, { _catalog_state: 'not_in_catalog' });
+          }
+          return row;
+        }));
+      })
+      .catch(() => {
+        if (seq !== savedRenderSeq || sheetMode !== 'saved') return;
+        paintSaved(list);
+      });
+  }
+
+  function paintSaved(list) {
     sheetBody.replaceChildren();
     if (!list.length) {
       sheetBody.appendChild(el('p', 'empty', 'Пока ничего не сохранено. Добавляйте ссылки и запросы кнопкой «В избранное».'));
@@ -876,20 +1302,41 @@
           card.appendChild(a);
         }
       } else {
-        card.appendChild(el('p', 'saved-title', item.item || item.title || 'Предложение'));
-        const price = item.price == null ? 'Цена не указана' : formatOfferPrice(item);
-        const bits = [price, item.place || item.source, item.is_demo ? 'Демо' : 'Реальное', formatSavedDate(item.at)].filter(Boolean);
-        card.appendChild(el('p', 'saved-meta', bits.join(' · ')));
+        const offerCard = el('div', 'saved-offer');
+        appendOfferThumb(offerCard, item.image_url);
+        const body = el('div', 'saved-offer-body');
+        body.appendChild(el('p', 'saved-title', item.item || item.title || 'Предложение'));
+        const price = formatSavedOfferPrice(item);
+        const bits = [
+          price,
+          item.store_title || item.place || item.source,
+          item.is_demo ? 'Демо' : null,
+          formatSavedDate(item.at),
+        ].filter(Boolean);
+        body.appendChild(el('p', 'saved-meta', bits.join(' · ')));
+        if (item.price_note) body.appendChild(el('p', 'saved-meta', item.price_note));
         if (item.needs_rename) {
-          card.appendChild(el('p', 'saved-query', 'Название вещи неизвестно — можно переименовать.'));
+          body.appendChild(el('p', 'saved-query', 'Название вещи неизвестно — можно переименовать.'));
         }
-        if (item.url) {
+        const markingOk = offerMarkingOk(item) && !item.marking_incomplete;
+        const url = safeUrl(item.url);
+        if (url && markingOk) {
           const a = el('a', 'btn', 'Открыть');
-          a.href = item.url;
+          a.href = url;
           a.target = '_blank';
-          a.rel = 'noopener noreferrer';
-          card.appendChild(a);
+          a.rel = isAffiliateOffer(item) ? 'sponsored noopener noreferrer' : 'noopener noreferrer';
+          body.appendChild(a);
+        } else if (url && !markingOk) {
+          body.appendChild(
+            el('p', 'saved-meta', 'Ссылка скрыта: нет обязательной маркировки предложения.')
+          );
         }
+        appendOfferLegal(body, item.legal_text);
+        if (item._catalog_state === 'not_in_catalog') {
+          body.appendChild(el('p', 'saved-meta', 'Актуальность не подтверждена'));
+        }
+        offerCard.appendChild(body);
+        card.appendChild(offerCard);
       }
       if (item.needs_rename || item.type === 'link' || item.type === 'query' || item.type === 'offer') {
         const rename = el('button', 'btn btn-ghost', 'Переименовать');
@@ -910,148 +1357,498 @@
     if (!o || o.is_demo !== false) return;
     const key = offerKey(o);
     const idx = pickedOffers.findIndex((item) => item.key === key);
-    if (idx >= 0) pickedOffers.splice(idx, 1);
-    else {
-      if (pickedOffers.length >= 2) pickedOffers.shift();
-      pickedOffers.push({
-        key,
-        title: o.title || 'Без названия',
-        price: Number.isFinite(Number(o.price)) ? Number(o.price) : null,
-        currency: o.currency || '',
-        source: o.source || '',
-        is_demo: false,
-        url: safeUrl(o.url) || '',
-      });
+    if (idx >= 0) {
+      setPickedOffers(pickedOffers.filter((item) => item.key !== key));
+      return;
     }
-    renderCompare();
+    if (isAffiliateOffer(o) && !offerMarkingOk(o)) return;
+    const next = pickedOffers.slice();
+    if (next.length >= 3) next.shift();
+    next.push({
+      key,
+      id: o.id || key,
+      title: o.title || 'Без названия',
+      price: Number.isFinite(Number(o.price)) ? Number(o.price) : null,
+      currency: o.currency || '',
+      price_mode: o.price_mode || '',
+      price_note: o.price_note || '',
+      source: o.source || '',
+      marketplace: o.marketplace || '',
+      store_title: o.store_title || '',
+      seller_title: o.seller_title || '',
+      seller_known: o.seller_known === false ? false : o.seller_known === true ? true : null,
+      image_url: o.image_url || '',
+      legal_text: o.legal_text || '',
+      fetched_at: o.fetched_at || '',
+      source_updated_at: o.source_updated_at || '',
+      data_freshness: o.data_freshness || null,
+      category: o.category || '',
+      brand: o.brand || '',
+      color: o.color || '',
+      size: o.size || '',
+      condition: o.condition || '',
+      match_notes: Array.isArray(o.match_notes) ? o.match_notes : [],
+      is_demo: false,
+      product_url: safeUrl(o.product_url) || '',
+      affiliate_url: safeUrl(o.affiliate_url || o.url) || '',
+      url: safeUrl(o.affiliate_url || o.url) || '',
+    });
+    setPickedOffers(next);
+  }
+
+  function paintCompare(list, catalogStatuses) {
+    const host = document.getElementById('compare-slot');
+    if (!host) return;
+    host.replaceChildren();
+    if (!list.length) return;
+    const statuses = catalogStatuses || {};
+    const box = el('div', 'compare glass');
+    const head = el('div', 'compare-head');
+    head.appendChild(el('h2', null, 'Сравнение'));
+    const headActions = el('div', 'compare-head-actions');
+    if (list.length >= 2 && Compare) {
+      const diffs = el('button', 'btn btn-ghost' + (compareDiffsOnly ? ' is-on' : ''), 'Только различия');
+      diffs.type = 'button';
+      diffs.setAttribute('aria-pressed', compareDiffsOnly ? 'true' : 'false');
+      diffs.addEventListener('click', () => {
+        compareDiffsOnly = !compareDiffsOnly;
+        paintCompare(list, statuses);
+      });
+      headActions.appendChild(diffs);
+    }
+    const close = el('button', 'btn btn-ghost', 'Очистить сравнение');
+    close.type = 'button';
+    close.addEventListener('click', () => {
+      compareDiffsOnly = false;
+      setPickedOffers([]);
+      document.querySelectorAll('.offers-row.is-picked').forEach((row) => row.classList.remove('is-picked'));
+    });
+    headActions.appendChild(close);
+    head.appendChild(headActions);
+    box.appendChild(head);
+
+    if (list.length < 2) {
+      box.appendChild(
+        el(
+          'p',
+          'compare-hint',
+          'Добавьте ещё одно предложение для сравнения (кнопка «Сравнить» у карточки). Сейчас выбран один товар.'
+        )
+      );
+    }
+
+    const wrap = el('div', 'compare-table-wrap');
+    const table = el('div', 'compare-table');
+    table.style.setProperty('--compare-cols', String(list.length));
+
+    const headRow = el('div', 'compare-row compare-row-head');
+    headRow.appendChild(el('div', 'compare-label', ''));
+    list.forEach((item) => {
+      const cell = el('div', 'compare-cell compare-product');
+      appendOfferThumb(cell, item.image_url);
+      cell.appendChild(el('p', 'offers-name', item.title || 'Без названия'));
+      if (statuses[item.id] === 'not_in_catalog') {
+        cell.appendChild(
+          el('p', 'compare-stale', 'Актуальность не подтверждена: предложения нет в активном каталоге.')
+        );
+      }
+      const remove = el('button', 'btn btn-ghost compare-remove', 'Убрать');
+      remove.type = 'button';
+      remove.addEventListener('click', () => {
+        setPickedOffers(pickedOffers.filter((row) => row.key !== item.key));
+      });
+      cell.appendChild(remove);
+      headRow.appendChild(cell);
+    });
+    table.appendChild(headRow);
+
+    function addRow(label, values, opts) {
+      const row = el('div', 'compare-row');
+      row.appendChild(el('div', 'compare-label', label));
+      values.forEach((val, idx) => {
+        const cell = el('div', 'compare-cell');
+        cell.textContent = val;
+        if (opts && opts.origins && opts.origins[idx]) {
+          cell.appendChild(el('span', 'compare-origin', ' · ' + opts.origins[idx]));
+        }
+        row.appendChild(cell);
+      });
+      table.appendChild(row);
+    }
+
+    addRow(
+      'Магазин',
+      list.map((item) => item.marketplace || item.source || 'Нет данных')
+    );
+    addRow(
+      'Цена',
+      list.map((item) => formatOfferPrice(item) || 'Уточнить цену')
+    );
+    if (list.some((item) => item.price_note)) {
+      addRow(
+        'Пояснение цены',
+        list.map((item) => item.price_note || 'Нет данных')
+      );
+    }
+
+    if (list.length >= 2 && Compare) {
+      const spec = Compare.buildCompareSpec(list);
+      const rows = Compare.filterDiffRows(spec, compareDiffsOnly).filter(
+        (row) => row.key !== 'marketplace'
+      );
+      if (compareDiffsOnly && !Compare.canShowDetailedDiffs(rows)) {
+        const hintRow = el('div', 'compare-row');
+        hintRow.appendChild(el('div', 'compare-label', 'Характеристики'));
+        const hintCell = el('div', 'compare-cell compare-span');
+        hintCell.style.gridColumn = '2 / -1';
+        hintCell.textContent = 'Недостаточно данных для подробного сравнения';
+        hintRow.appendChild(hintCell);
+        table.appendChild(hintRow);
+      } else {
+        rows.forEach((row) => addRow(row.label, row.values, { origins: row.origins }));
+      }
+    } else if (list.length === 1) {
+      const one = list[0];
+      addRow('Категория', [one.category || 'Нет данных']);
+      addRow('Бренд', [one.brand || 'Нет данных']);
+      addRow('Цвет', [one.color || 'Нет данных']);
+      addRow('Размер', [one.size || 'Нет данных']);
+    }
+
+    addRow(
+      'Получено нами',
+      list.map((item) => {
+        const got = item.fetched_at ? formatFetchedAt(item.fetched_at) : '';
+        return got || 'Нет данных';
+      })
+    );
+    addRow(
+      'Актуальность среза',
+      list.map((item) => {
+        if (statuses[item.id] === 'not_in_catalog') return 'Не подтверждена';
+        const fresh =
+          item.data_freshness && item.data_freshness.last_success_at
+            ? formatFetchedAt(item.data_freshness.last_success_at)
+            : '';
+        return fresh || (item.fetched_at ? 'По времени получения' : 'Нет данных');
+      })
+    );
+    if (list.some((item) => item.source_updated_at)) {
+      addRow(
+        'Обновлено продавцом',
+        list.map((item) => {
+          if (!item.source_updated_at) return 'Нет данных';
+          return formatOfferDate(item.source_updated_at) || formatFetchedAt(item.source_updated_at) || 'Нет данных';
+        })
+      );
+    }
+
+    const linkRow = el('div', 'compare-row');
+    linkRow.appendChild(el('div', 'compare-label', 'Ссылка'));
+    list.forEach((item) => {
+      const cell = el('div', 'compare-cell');
+      const url = safeUrl(item.affiliate_url || item.url);
+      let hostName = '';
+      try { hostName = url ? new URL(url).hostname : ''; } catch (_) { hostName = ''; }
+      const markingOk = offerMarkingOk(item);
+      const real =
+        url && !item.is_demo && markingOk && hostName !== 'demo.local' && !hostName.endsWith('.demo.local');
+      if (real) {
+        const a = el('a', 'btn', 'Перейти к товару');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'sponsored noopener noreferrer';
+        cell.appendChild(a);
+      } else if (url && !markingOk) {
+        cell.textContent = 'Ссылка скрыта: нет обязательной маркировки.';
+      } else {
+        cell.textContent = 'Нет данных';
+      }
+      linkRow.appendChild(cell);
+    });
+    table.appendChild(linkRow);
+
+    const legalRow = el('div', 'compare-row compare-row-legal');
+    legalRow.appendChild(el('div', 'compare-label', 'Маркировка'));
+    list.forEach((item) => {
+      const cell = el('div', 'compare-cell');
+      appendOfferLegal(cell, item.legal_text);
+      if (!item.legal_text) cell.textContent = 'Нет данных';
+      legalRow.appendChild(cell);
+    });
+    table.appendChild(legalRow);
+
+    wrap.appendChild(table);
+    box.appendChild(wrap);
+    host.appendChild(box);
+
+    document.querySelectorAll('.offers-row[data-offer-key]').forEach((row) => {
+      const on = pickedOffers.some((item) => item.key === row.dataset.offerKey);
+      row.classList.toggle('is-picked', on);
+      row.querySelectorAll('button').forEach((btn) => {
+        if (btn.textContent === 'Сравнить' || btn.textContent === 'В сравнении') {
+          btn.textContent = on ? 'В сравнении' : 'Сравнить';
+        }
+      });
+    });
   }
 
   function renderCompare() {
     const host = document.getElementById('compare-slot');
     if (!host) return;
-    host.replaceChildren();
-    if (pickedOffers.length < 2) {
-      if (pickedOffers.length === 1) host.appendChild(el('p', 'compare-hint', 'Выберите ещё одно предложение.'));
-      return;
+    const list = pickedOffers.slice();
+    const seq = ++compareRenderSeq;
+    paintCompare(list, {});
+    const ids = list
+      .map((item) => String(item.id || ''))
+      .filter((id) => /^(takprodam|admitad):/i.test(id));
+    if (!ids.length) return;
+    fetch('/api/catalog/offer-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids.slice(0, 10) }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (seq !== compareRenderSeq) return;
+        paintCompare(list, (data && data.statuses) || {});
+      })
+      .catch(() => {
+        if (seq !== compareRenderSeq) return;
+        paintCompare(list, {});
+      });
+  }
+
+  function renderResultsToolbar(need) {
+    // Фильтры уже в строке критериев над поиском — без дубля «Изменить параметры».
+    const bar = el('div', 'results-toolbar');
+    let any = false;
+    if (need && need.actions && need.actions.reset_exclusions) {
+      const reset = el('button', 'btn btn-ghost', 'Сбросить исключения');
+      reset.type = 'button';
+      reset.addEventListener('click', () => {
+        const q = (lastArgs && lastArgs.query) || input.value.trim();
+        syncNeedState(q, []);
+        runSearch(null, { query: q, skipPhoto: true });
+      });
+      bar.appendChild(reset);
+      any = true;
     }
-    const box = el('div', 'compare glass');
-    const head = el('div', 'compare-head');
-    head.appendChild(el('h2', null, 'Сравнение'));
-    const close = el('button', 'btn btn-ghost', 'Закрыть');
-    close.type = 'button';
-    close.addEventListener('click', () => {
-      pickedOffers = [];
-      renderCompare();
-      document.querySelectorAll('.offers-row.is-picked').forEach((row) => row.classList.remove('is-picked'));
-    });
-    head.appendChild(close);
-    box.appendChild(head);
-    const grid = el('div', 'compare-grid');
-    pickedOffers.forEach((item) => {
-      const card = el('article', 'compare-card');
-      card.appendChild(el('p', 'offers-name', item.title));
-      const price = item.price == null ? 'Цена не указана' : formatOfferPrice(item);
-      card.appendChild(el('p', 'offers-price', price));
-      card.appendChild(el('p', 'offers-meta', item.source || 'Источник не указан'));
-      card.appendChild(el('p', 'offers-meta', item.is_demo ? 'Демо' : 'Реальное предложение'));
-      const url = safeUrl(item.url);
-      let hostName = '';
-      try { hostName = url ? new URL(url).hostname : ''; } catch (_) { hostName = ''; }
-      const real = url && !item.is_demo && hostName !== 'demo.local' && !hostName.endsWith('.demo.local');
-      if (real) {
-        const a = el('a', 'btn', 'Открыть');
-        a.href = url;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        card.appendChild(a);
-      }
-      grid.appendChild(card);
-    });
-    box.appendChild(grid);
-    host.appendChild(box);
+    if (need && need.actions && need.actions.show_others) {
+      const more = el('button', 'btn btn-ghost', 'Показать другие');
+      more.type = 'button';
+      more.addEventListener('click', () => {
+        const q = (lastArgs && lastArgs.query) || input.value.trim();
+        const ids = needExcludeIdsForQuery(q);
+        (need.items || []).forEach((item) => {
+          if (item && item.id && !ids.includes(item.id)) ids.push(item.id);
+        });
+        syncNeedState(q, ids);
+        runSearch(null, { query: q, skipPhoto: true });
+      });
+      bar.appendChild(more);
+      any = true;
+    }
+    return any ? bar : null;
+  }
+
+  function appendNeedUnderstood(body, need) {
+    if (!need || !need.understood || !body) return;
+    const u = need.understood;
+    if (u.category) body.appendChild(el('p', 'understood-phrase', 'Категория: ' + u.category));
+    if (u.must && u.must.length) {
+      body.appendChild(
+        el('p', 'understood-phrase', 'Обязательно: ' + u.must.map((m) => m.label).join('; '))
+      );
+    }
+    if (u.prefer && u.prefer.length) {
+      body.appendChild(
+        el('p', 'understood-phrase', 'Предпочтения: ' + u.prefer.map((m) => m.label).join('; '))
+      );
+    }
+    if (u.unknown && u.unknown.length) {
+      body.appendChild(
+        el(
+          'p',
+          'understood-phrase',
+          'Нет в данных каталога: ' +
+            u.unknown.map((m) => m.label + (m.note ? ' (' + m.note + ')' : '')).join('; ')
+        )
+      );
+    }
   }
 
   /** Реальные предложения провайдера (is_demo === false). Демо не показываем как выдачу. */
   function renderRealOffersBlock(offers) {
-    if (!offers || typeof offers !== 'object' || !Array.isArray(offers.items)) return null;
-    const realItems = offers.items.filter((o) => o && o.is_demo === false);
-    if (!realItems.length) return null;
+    if (!offers || typeof offers !== 'object') return null;
+    const catalog = offers.catalog || null;
+    const need = offers.need_match || null;
+    const useNeedPick = !!(need && Array.isArray(need.items));
+    const realItems = (useNeedPick
+      ? need.items
+      : Array.isArray(offers.items)
+        ? offers.items
+        : []
+    ).filter((o) => o && o.is_demo === false);
 
+    if (!realItems.length) {
+      if (catalog && catalog.enabled) {
+        const empty = el('div', 'understood glass offers offers-empty');
+        empty.appendChild(el('h2', null, catalogEmptyTitle(offers)));
+        empty.appendChild(el('p', 'offers-note', catalogUnavailableMessage(offers)));
+        appendNeedUnderstood(empty, need);
+        appendFilterHints(empty, offers);
+        return empty;
+      }
+      return null;
+    }
+
+    const visibleItems = realItems.filter((o) => !isAffiliateOffer(o) || offerMarkingOk(o));
     const box = el('div', 'understood glass offers');
     box.appendChild(el('h2', null, 'Предложения'));
-    box.appendChild(
-      el(
-        'p',
-        'offers-note',
-        'Карточки от подключённого провайдера. Цена и наличие проверяются на площадке.'
-      )
-    );
+    const fetchedSet = [
+      ...new Set(visibleItems.map((o) => o.fetched_at).filter(Boolean).map((v) => formatFetchedAt(v))),
+    ];
 
     let mode = 'score';
     const tools = el('div', 'offer-tools');
     const list = el('ul', 'offers-list');
 
     function paint() {
-      const rows = realItems.slice().sort((a, b) => compareClientOffers(a, b, mode));
+      const rows = visibleItems.slice().sort((a, b) => compareClientOffers(a, b, mode));
       list.replaceChildren();
       rows.forEach((o) => {
         const li = el('li', 'offers-row is-real');
-        const main = document.createElement('div');
-        main.className = 'offers-main';
-        main.appendChild(el('p', 'offers-name', o.title || 'Без названия'));
-        const metaBits = [o.source, o.brand, o.category, o.color, o.size ? 'размер ' + o.size : null].filter(Boolean);
-        main.appendChild(el('p', 'offers-meta', metaBits.join(' · ')));
-        const price = el('p', 'offers-price', formatOfferPrice(o));
-        if (o.condition) price.appendChild(el('span', 'offers-cond', ' ' + o.condition));
-        main.appendChild(price);
-        const date = formatOfferDate(o.updated_at);
-        if (date) main.appendChild(el('p', 'offers-updated', 'Обновлено: ' + date));
-        li.appendChild(main);
         li.dataset.offerKey = offerKey(o);
-        const url = safeUrl(o.url);
+
+        const media = el('div', 'offers-media');
+        appendOfferThumb(media, o.image_url);
+        li.appendChild(media);
+
+        const main = el('div', 'offers-main');
+        main.appendChild(
+          el('p', 'offers-meta offers-store', o.marketplace || 'Нет данных')
+        );
+        const titleText = o.title || 'Без названия';
+        const name = el('p', 'offers-name is-clamped', titleText);
+        name.title = titleText;
+        main.appendChild(name);
+        if (titleText.length > 72) {
+          const moreTitle = el('button', 'btn-link offers-title-more', 'Показать название');
+          moreTitle.type = 'button';
+          moreTitle.addEventListener('click', () => {
+            const open = name.classList.toggle('is-clamped') === false;
+            moreTitle.textContent = open ? 'Свернуть название' : 'Показать название';
+          });
+          main.appendChild(moreTitle);
+        }
+        const price = el('p', 'offers-price', formatOfferPrice(o) || 'Уточнить цену');
+        main.appendChild(price);
+        if (o.price_note) main.appendChild(el('p', 'offers-meta offers-price-note', o.price_note));
+        const facts = [];
+        if (o.category) facts.push(o.category);
+        if (o.brand) facts.push(o.brand);
+        if (o.color) facts.push(o.color);
+        if (o.size) facts.push('р. ' + o.size);
+        if (facts.length) main.appendChild(el('p', 'offers-meta offers-facts', facts.join(' · ')));
+        li.appendChild(main);
+
+        const url = safeUrl(o.affiliate_url || o.url);
         let hostName = '';
         try { hostName = url ? new URL(url).hostname : ''; } catch (_) { hostName = ''; }
-        const realLink = url && hostName !== 'demo.local' && !hostName.endsWith('.demo.local');
+        const markingOk = offerMarkingOk(o);
+        const realLink =
+          url && markingOk && hostName !== 'demo.local' && !hostName.endsWith('.demo.local');
+
+        const actions = el('div', 'offers-actions');
         if (realLink) {
-          const a = el('a', 'btn offers-open', 'Открыть у продавца');
+          const a = el('a', 'btn offers-open', 'Перейти к товару');
           a.href = url;
           a.target = '_blank';
-          a.rel = 'noopener noreferrer';
-          li.appendChild(a);
+          a.rel = 'sponsored noopener noreferrer';
+          actions.appendChild(a);
         }
-        const actions = el('div', 'source-actions');
-        const pick = el('button', 'btn btn-ghost', pickedOffers.some((item) => item.key === offerKey(o)) ? 'В сравнении' : 'Сравнить');
+        const secondary = el('div', 'offers-actions-secondary');
+        const pick = el(
+          'button',
+          'btn btn-ghost',
+          pickedOffers.some((item) => item.key === offerKey(o)) ? 'В сравнении' : 'Сравнить'
+        );
         pick.type = 'button';
+        pick.setAttribute('aria-label', 'Сравнить предложение');
         if (pickedOffers.some((item) => item.key === offerKey(o))) li.classList.add('is-picked');
         pick.addEventListener('click', (e) => {
           e.stopPropagation();
           togglePick(o);
           paint();
         });
-        actions.appendChild(pick);
+        secondary.appendChild(pick);
         const saveOffer = el('button', 'btn btn-ghost', 'В избранное');
         saveOffer.type = 'button';
+        saveOffer.setAttribute('aria-label', 'Добавить в избранное');
         saveOffer.addEventListener('click', (e) => {
           e.stopPropagation();
+          if (!offerMarkingOk(o)) {
+            setStatus('Нельзя сохранить предложение без обязательной маркировки.', 'error');
+            return;
+          }
           const parsed = (lastData && lastData.parsed) || {};
           const queryText = (lastArgs && lastArgs.query) || input.value.trim();
           const fallback = thingName(parsed, queryText, !!(lastData && lastData.photo_used));
           addSaved({
             type: 'offer',
+            id: o.id || undefined,
             item: o.title || fallback || 'Предложение',
             title: o.title || fallback || 'Предложение',
             price: Number.isFinite(Number(o.price)) ? Number(o.price) : null,
             currency: o.currency || '',
+            price_mode: o.price_mode || '',
+            price_note: o.price_note || '',
+            legal_text: o.legal_text || '',
+            image_url: o.image_url || '',
+            fetched_at: o.fetched_at || '',
             is_demo: false,
+            product_url: safeUrl(o.product_url) || '',
+            affiliate_url: realLink ? url : '',
             url: realLink ? url : '',
             source: o.source || '',
-            place: o.source || '',
+            place: o.marketplace || o.source || '',
+            store_title: o.store_title || '',
             query: queryText,
             search_type: lastData && lastData.photo_used ? 'photo' : 'text',
           });
         });
-        actions.appendChild(saveOffer);
+        secondary.appendChild(saveOffer);
+        actions.appendChild(secondary);
+        if (need && o.id) {
+          const excludeBtn = el('button', 'btn-link offers-exclude', 'Убрать из подбора');
+          excludeBtn.type = 'button';
+          excludeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const q = (lastArgs && lastArgs.query) || input.value.trim();
+            const ids = needExcludeIdsForQuery(q);
+            if (!ids.includes(o.id)) ids.push(o.id);
+            syncNeedState(q, ids);
+            runSearch(null, { query: q, skipPhoto: true });
+          });
+          actions.appendChild(excludeBtn);
+        }
         li.appendChild(actions);
+
+        const legalWrap = el('div', 'offers-legal-wrap');
+        appendOfferLegal(legalWrap, o.legal_text);
+        if (fetchedSet.length !== 1 && o.fetched_at) {
+          legalWrap.appendChild(
+            el('p', 'offers-updated', 'Получено нашим сервисом: ' + formatFetchedAt(o.fetched_at))
+          );
+        }
+        if (o.source_updated_at) {
+          const sellerUpd = formatOfferDate(o.source_updated_at) || formatFetchedAt(o.source_updated_at);
+          if (sellerUpd) {
+            legalWrap.appendChild(el('p', 'offers-updated', 'Обновлено продавцом: ' + sellerUpd));
+          }
+        }
+        li.appendChild(legalWrap);
         list.appendChild(li);
       });
     }
@@ -1069,7 +1866,10 @@
       tools.appendChild(btn);
     }
     tool('По релевантности', 'score');
-    tool('По цене', 'price');
+    const comparablePrice = visibleItems.some(
+      (o) => String(o.price_mode || '') === 'amount' && offerCurrency(o)
+    );
+    if (comparablePrice) tool('По цене', 'price');
     tool('По источнику', 'source');
     box.appendChild(tools);
     box.appendChild(list);
@@ -1318,7 +2118,10 @@
 
   function scrollToResults() {
     if (userScrolledDuringSearch) return;
-    const target = document.getElementById('results');
+    // При наличии карточек целимся в блок предложений, иначе статус «найдено» легко пролистать мимо.
+    const target =
+      document.querySelector('#results-body .offers') ||
+      document.getElementById('results');
     if (!target) return;
     const rect = target.getBoundingClientRect();
     const vh = window.innerHeight || 800;
@@ -1326,29 +2129,55 @@
     const headerH = header ? Math.ceil(header.getBoundingClientRect().height) : 0;
     const narrow = window.innerWidth <= 720;
     const safeTop = headerH + (narrow ? 28 : 16);
-    const bandTop = Math.max(safeTop, Math.round(vh * 0.28));
-    const bandBottom = Math.round(vh * 0.62);
-    if (rect.top >= bandTop && rect.top <= bandBottom && rect.bottom > vh * 0.45) return;
-    const desired = Math.round(vh * 0.42);
+    const bandTop = Math.max(safeTop, Math.round(vh * 0.18));
+    const bandBottom = Math.round(vh * 0.55);
+    if (rect.top >= bandTop && rect.top <= bandBottom && rect.bottom > vh * 0.4) return;
+    const desired = Math.round(vh * 0.22);
     const top = Math.max(0, window.scrollY + rect.top - desired);
     window.scrollTo({ top: top, behavior: reduceMotion ? 'auto' : 'smooth' });
   }
 
+  function countCatalogCards(data) {
+    if (data && data.offers && data.offers.need_match && Array.isArray(data.offers.need_match.items)) {
+      return data.offers.need_match.items.filter((o) => o && o.is_demo === false).length;
+    }
+    if (data && data.offers && Array.isArray(data.offers.items)) {
+      return data.offers.items.filter((o) => o && o.is_demo === false).length;
+    }
+    return 0;
+  }
+
   function renderMarkets(sources, p, data) {
-    const markets = el('div', 'understood glass');
-    markets.id = 'markets-block';
-    markets.appendChild(el('h2', null, 'Подходящие сайты'));
     const n = Array.isArray(sources) ? sources.length : 0;
-    markets.appendChild(
-      el(
-        'p',
-        'understood-phrase',
-        'Переходов: '
-          + n
-          + ' — на поиск или каталог, не карточки с ценой.'
-          + (p.search_phrase ? ' Фраза: «' + p.search_phrase + '».' : '')
-      )
-    );
+    if (!n) return null;
+    const noCatalogCards = countCatalogCards(data) === 0;
+    const markets = el('div', noCatalogCards ? 'understood glass markets-open' : 'markets-details-body');
+    markets.id = 'markets-block';
+    if (noCatalogCards) {
+      markets.appendChild(el('h2', null, 'Поиск на сайтах магазинов'));
+      markets.appendChild(
+        el(
+          'p',
+          'understood-phrase',
+          'Это поисковые ссылки, а не найденные товары из каталога VishFind. Переходов: '
+            + n
+            + '.'
+            + (p.search_phrase ? ' Фраза: «' + p.search_phrase + '».' : '')
+        )
+      );
+    } else {
+      markets.appendChild(el('h2', null, 'Поиск на сайтах магазинов'));
+      markets.appendChild(
+        el(
+          'p',
+          'understood-phrase',
+          'Дополнительные поисковые ссылки, не карточки каталога. Переходов: '
+            + n
+            + '.'
+            + (p.search_phrase ? ' Фраза: «' + p.search_phrase + '».' : '')
+        )
+      );
+    }
     if (data && data.web_search && data.web_search.user_requested) {
       const webCount = Array.isArray(data.web_results) ? data.web_results.length : 0;
       markets.appendChild(
@@ -1437,33 +2266,34 @@
     markets.appendChild(filterBar);
     markets.appendChild(groupsHost);
     paintGroups();
-    return markets;
+    if (noCatalogCards) return markets;
+    const wrap = el('details', 'understood glass markets-details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Продолжить поиск в магазинах';
+    wrap.appendChild(summary);
+    wrap.appendChild(markets);
+    return wrap;
   }
 
   function renderRecognition(p, data) {
-    const wrap = el('div', 'recog-wrap');
-    const btn = el('button', 'btn btn-ghost recog-toggle', 'Что распозналось?');
-    btn.type = 'button';
-    btn.setAttribute('aria-expanded', 'false');
-    const drawer = el('div', 'recog');
-    drawer.hidden = true;
-    if (aiEnabled && data && data.photo_used) {
-      const photoWrap = el('div', 'understood glass');
-      photoWrap.appendChild(el('h2', null, 'Что видно на фото'));
+    const photoUsed = !!(data && data.photo_used);
+    const details = el('details', 'understood glass results-recog');
+    const summary = document.createElement('summary');
+    summary.textContent = photoUsed ? 'Как распознано фото' : 'Как распознан запрос';
+    details.appendChild(summary);
+    const body = el('div', 'results-params-body recog');
+    const need = data && data.offers && data.offers.need_match;
+    appendNeedUnderstood(body, need);
+    if (aiEnabled && photoUsed) {
       const photoBlock = renderPhotoAttrs(data.photo);
-      if (photoBlock) photoWrap.appendChild(photoBlock);
-      drawer.appendChild(photoWrap);
+      if (photoBlock) {
+        body.appendChild(el('p', 'source-passed-label', 'Что видно на фото'));
+        body.appendChild(photoBlock);
+      }
     }
-    drawer.appendChild(renderRecognizedSummary(p, data));
-    btn.addEventListener('click', () => {
-      const open = drawer.hidden;
-      drawer.hidden = !open;
-      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-      btn.textContent = open ? 'Скрыть распознанное' : 'Что распозналось?';
-    });
-    wrap.appendChild(btn);
-    wrap.appendChild(drawer);
-    return wrap;
+    body.appendChild(renderRecognizedSummary(p, data, { embedded: true }));
+    details.appendChild(body);
+    return details;
   }
 
   function canSimplifyQuery(p, data) {
@@ -1512,31 +2342,38 @@
   }
 
   function renderResultsDisclaimer() {
+    const wrap = el('details', 'results-offers-note');
+    const summary = document.createElement('summary');
+    summary.textContent = 'О предложениях и продавцах';
+    wrap.appendChild(summary);
     const note = el('p', 'results-disclaimer');
     note.textContent =
       'VishFind подбирает ссылки на сторонние сайты. '
       + 'Наличие, цену и подлинность проверяйте у продавца.';
-    return note;
+    wrap.appendChild(note);
+    return wrap;
   }
 
   function renderEmpty(p, data, triedPhotoWithoutAi) {
     markResultsReady();
     const box = el('div', 'understood glass result-empty');
-    box.appendChild(el('h2', null, 'Ничего не нашлось'));
+    box.appendChild(el('h2', null, 'Поиск не дал результатов'));
     box.appendChild(
-      el('p', 'understood-phrase', 'По этому запросу нет проверенных ссылок. Измените формулировку или уберите лишнее.')
+      el(
+        'p',
+        'understood-phrase',
+        'В каталоге VishFind и в проверенных поисковых ссылках по этому запросу ничего не собрали. Измените формулировку или критерии — это не утверждение, что товара нет в продаже.'
+      )
     );
+    appendFilterHints(box, data && data.offers);
     const change = el('button', 'btn btn-primary', 'Изменить запрос');
     change.type = 'button';
     change.addEventListener('click', focusQuery);
     box.appendChild(change);
     resultsBody.appendChild(box);
-    if (newQueryRow) {
-      resultsBody.appendChild(newQueryRow);
-      setNewQueryVisible(true);
-    }
-    resultsBody.appendChild(renderResultsDisclaimer());
+    setNewQueryVisible(true);
     resultsBody.appendChild(renderRecognition(p, data));
+    resultsBody.appendChild(renderResultsDisclaimer());
     renderSmartHints(p, triedPhotoWithoutAi, true);
   }
 
@@ -1568,22 +2405,32 @@
     const realOffers = data.offers && Array.isArray(data.offers.items)
       ? data.offers.items.filter((o) => o && o.is_demo === false)
       : [];
+    const needPick = data.offers && data.offers.need_match && Array.isArray(data.offers.need_match.items)
+      ? data.offers.need_match.items.filter((o) => o && o.is_demo === false)
+      : [];
     const triedPhotoWithoutAi = !!(imageDataUrl && !aiEnabled);
 
     renderSmartHints(p, triedPhotoWithoutAi, true);
 
-    if (!sources.length && !realOffers.length) {
+    const need = data.offers && data.offers.need_match;
+    const toolbar = renderResultsToolbar(need);
+    if (toolbar) resultsBody.appendChild(toolbar);
+
+    const offersBlock = renderRealOffersBlock(data.offers);
+    const hasCatalogBlock = !!offersBlock;
+    if (!sources.length && !realOffers.length && !needPick.length && !hasCatalogBlock) {
       renderEmpty(p, data, triedPhotoWithoutAi);
       staggerIn(resultsBody.querySelectorAll('.understood'));
       return;
     }
 
-    if (sources.length) resultsBody.appendChild(renderMarkets(sources, p, data));
-    // «Новый запрос» сразу после списка переходов, до web / вторичных / рекламы.
-    if (newQueryRow) {
-      resultsBody.appendChild(newQueryRow);
-      setNewQueryVisible(true);
-    }
+    // Сначала реальные карточки каталога, затем поисковые переходы (не смешиваем).
+    if (offersBlock) resultsBody.appendChild(offersBlock);
+
+    const marketsBlock = sources.length ? renderMarkets(sources, p, data) : null;
+    if (marketsBlock) resultsBody.appendChild(marketsBlock);
+    // Действия «Сохранить / Новый запрос» — в #query-actions у области запроса (не в выдаче).
+    setNewQueryVisible(true);
     if (Array.isArray(data.web_results) && data.web_results.length) {
       const webBox = el('div', 'understood glass');
       webBox.appendChild(el('h2', null, 'Уточнение из интернета'));
@@ -1604,26 +2451,7 @@
       resultsBody.appendChild(webBox);
     }
 
-    resultsBody.appendChild(renderResultsDisclaimer());
-
     const secondary = el('div', 'results-secondary');
-    const saveQuery = el('button', 'btn btn-ghost save-query', 'Сохранить запрос');
-    saveQuery.type = 'button';
-    saveQuery.addEventListener('click', () => {
-      const text = (lastArgs && lastArgs.query) || input.value.trim() || p.search_phrase || '';
-      if (!text) {
-        setStatus('Нечего сохранять: запрос пустой.', 'error');
-        return;
-      }
-      addSaved({
-        type: 'query',
-        item: thingName(p, text, !!data.photo_used),
-        title: thingName(p, text, !!data.photo_used),
-        query: text,
-        search_type: data.photo_used ? 'photo' : 'text',
-      });
-    });
-    secondary.appendChild(saveQuery);
     if (canSimplifyQuery(p, data)) {
       const simplifyBtn = el('button', 'btn btn-ghost', 'Упростить запрос');
       simplifyBtn.type = 'button';
@@ -1632,49 +2460,30 @@
     }
     secondary.appendChild(renderRecognition(p, data));
     resultsBody.appendChild(secondary);
-
-    const offersBlock = renderRealOffersBlock(data.offers);
-    if (offersBlock) resultsBody.appendChild(offersBlock);
+    // Общее пояснение о сторонних сайтах — свёрнутый блок в самом низу выдачи.
+    resultsBody.appendChild(renderResultsDisclaimer());
 
     staggerIn(resultsBody.querySelectorAll('.understood, .source-card, .offers-row'));
   }
 
   function loadHistory() {
     try {
-      const raw = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-      return Array.isArray(raw) ? raw.filter((item) => item && typeof item === 'object') : [];
+      const raw = JSON.parse(localStorage.getItem(historyStorageKey()) || '[]');
+      if (!Array.isArray(raw)) return [];
+      // Сбрасываем любые ранее сохранённые thumb/base64.
+      return raw
+        .filter((item) => item && typeof item === 'object')
+        .map((item) => Object.assign({}, item, { thumb: null }));
     } catch (_) {
       return [];
     }
   }
 
   function saveHistory(list) {
-    const slim = list.slice(0, 20);
+    const slim = list.slice(0, 20).map((item) => Object.assign({}, item, { thumb: null }));
     try {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(slim));
-    } catch (_) {
-      try {
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(slim.map((item) => ({ ...item, thumb: null }))));
-      } catch (__) { /* квота браузера — историю в этот раз не пишем */ }
-    }
-  }
-
-  function makeThumb(dataUrl) {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const max = 160;
-        const scale = Math.min(1, max / Math.max(img.width, img.height));
-        const c = document.createElement('canvas');
-        c.width = Math.max(1, Math.round(img.width * scale));
-        c.height = Math.max(1, Math.round(img.height * scale));
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        const out = c.toDataURL('image/jpeg', 0.7);
-        resolve(out.length > 40000 ? null : out);
-      };
-      img.onerror = () => resolve(null);
-      img.src = dataUrl;
-    });
+      localStorage.setItem(historyStorageKey(), JSON.stringify(slim));
+    } catch (_) { /* квота браузера — историю в этот раз не пишем */ }
   }
 
   function formatWhen(iso) {
@@ -1698,12 +2507,6 @@
     const grid = el('div', 'history-list');
     list.forEach((item) => {
       const card = el('article', 'history-card glass');
-      if (item.thumb) {
-        const img = document.createElement('img');
-        img.src = item.thumb;
-        img.alt = '';
-        card.appendChild(img);
-      }
       const main = document.createElement('div');
       const open = el('button', 'history-open', item.query || (item.type === 'photo' ? 'Поиск по фото' : 'Запрос'));
       open.type = 'button';
@@ -1748,21 +2551,9 @@
       if (!restored.budget_min && !restored.budget_max) restored.cleared.price = true;
       criteriaApi = Criteria.mount(userCriteriaHost, restored, criteriaMountOpts());
     }
-    if (item.type === 'photo' && item.thumb && aiEnabled) {
-      imageDataUrl = item.thumb;
-      if (previewImg) previewImg.src = item.thumb;
-      if (preview) preview.hidden = false;
-      if (photoMeta) photoMeta.textContent = 'Превью из истории';
-      if (photoBtn) photoBtn.classList.add('is-active');
-    } else {
-      clearPhoto();
-      if (item.type === 'photo' && item.thumb && previewImg && preview) {
-        previewImg.src = item.thumb;
-        preview.hidden = false;
-        if (photoMeta) photoMeta.textContent = 'Загрузите фото заново';
-      }
-    }
-    if (item.type === 'photo' && !item.thumb && !item.query) {
+    // Старые записи истории могли содержать thumb — не восстанавливаем image/base64.
+    clearPhoto();
+    if (item.type === 'photo' && !item.query) {
       setStatus('Загрузите фото заново, чтобы повторить разбор.', 'error');
       if (photoBtn && aiEnabled) photoBtn.focus();
       return;
@@ -1849,11 +2640,9 @@
         budget_max: p.budget_max != null ? p.budget_max : p.budget != null ? p.budget : null,
       },
       criteria_version: 2,
+      // Фото/base64 в localStorage не пишем (ни оригинал, ни превью).
       thumb: null,
     };
-    if (sentPhoto && imageDataUrl) {
-      try { entry.thumb = await makeThumb(imageDataUrl); } catch (_) { entry.thumb = null; }
-    }
     let list = loadHistory();
     if (entry.type === 'text') list = list.filter((item) => !(item.type === 'text' && item.query === entry.query));
     list.unshift(entry);
@@ -1894,10 +2683,14 @@
       || (attributes.budget_max != null && attributes.budget_max !== '')
       || (attributes.budget != null && attributes.budget !== '')
     ));
-    const hasClear = clear_attributes.length > 0;
+    // Sticky clear без выбранных чипов не отправляем: после «Сбросить фильтры»
+    // иначе priority+clear затирает разбор нового текста («сумка»/«браслет» → 422).
+    if (!hasAttr) {
+      return { attributes: undefined, attributes_priority: false, clear_attributes: [] };
+    }
     return {
-      attributes: hasAttr || hasClear ? attributes : undefined,
-      attributes_priority: hasAttr || hasClear,
+      attributes,
+      attributes_priority: true,
       clear_attributes,
     };
   }
@@ -1940,17 +2733,23 @@
     const mySeq = ++searchSeq;
     const controller = new AbortController();
     activeAbort = controller;
-    const timeoutMs = imageDataUrl && aiEnabled ? 100_000 : 30_000;
+    const timeoutMs = imageDataUrl && photoVisionAvailable ? 100_000 : 30_000;
     const timeoutId = setTimeout(() => {
       try { controller.abort('timeout'); } catch (_) { /* ignore */ }
     }, timeoutMs);
 
     setBusy(true);
+    // «Новый запрос» доступен во время ожидания (отмена), отдельно от кнопки «Искать».
+    setNewQueryVisible(true);
     armScrollGuard();
-    pickedOffers = [];
-    renderCompare();
+    setPickedOffers([]);
     const skipPhoto = !!(override && override.skipPhoto);
-    const analyzingPhoto = !!(imageDataUrl && aiEnabled && !skipPhoto && !photoAnalysisDone);
+    const analyzingPhoto = !!(
+      imageDataUrl &&
+      photoVisionAvailable &&
+      !skipPhoto &&
+      !photoAnalysisDone
+    );
     const sentPhoto = analyzingPhoto;
     setStatus(analyzingPhoto ? 'Смотрим фото и готовим переходы' : 'Формируем переходы');
     showSkeleton();
@@ -1971,8 +2770,12 @@
       }
       if (clearAttributes.length) payload.clear_attributes = clearAttributes;
       // Повторный разбор фото не запускаем при смене бюджета/сортировки/упрощении.
-      if (imageDataUrl && aiEnabled && !skipPhoto && !photoAnalysisDone) {
+      if (imageDataUrl && photoVisionAvailable && !skipPhoto && !photoAnalysisDone) {
+        criteriaBeforePhoto = snapshotCriteriaState();
         payload.image = imageDataUrl;
+      } else if (imageDataUrl && !photoVisionAvailable && !skipPhoto) {
+        // Не ждём распознавание при заведомо заблокированном vision.
+        clearPhoto();
       }
       // Opt-in: без галочки сервер не вызывает Ollama web_search.
       if (userWantsWebSearch()) payload.web_search = true;
@@ -1983,6 +2786,11 @@
         if (ps === 'asc') payload.prefer_cheaper = true;
         // delivery_preference не отправляем — вне пользовательского сценария.
       }
+      const excludeIds = needExcludeIdsForQuery(query);
+      if (excludeIds.length) {
+        payload.need_match = { exclude_ids: excludeIds };
+      }
+      syncNeedState(query, excludeIds);
 
       const r = await fetch('/api/search', {
         method: 'POST',
@@ -2008,6 +2816,8 @@
       await waitAtLeast(started);
       if (mySeq !== searchSeq) return;
       renderResults(data);
+      // После отрисовки карточек — к блоку предложений (первый scroll шёл к скелетону).
+      if (countCatalogCards(data) > 0) scrollToResults();
       if (Criteria && userCriteriaHost && data.parsed) {
         if (criteriaApi && criteriaApi.destroy) criteriaApi.destroy();
         // Синхронизация с итогом сервера + «липкий» сброс, чтобы текст не вернул очищенные поля.
@@ -2023,7 +2833,9 @@
         }
         nextState.prefer_cheaper = nextState.price_sort === 'asc';
         nextState.delivery_preference = 'any';
-        if (sentPhoto || data.photo_used) photoAnalysisDone = true;
+        if (sentPhoto || data.photo_used) {
+          photoAnalysisDone = true;
+        }
         nextState.cleared = {};
         const cleared = clearAttributes || [];
         if (cleared.some((k) => k === 'budget' || k === 'price')) {
@@ -2043,6 +2855,9 @@
           nextState.cleared.features = true;
         }
         criteriaApi = Criteria.mount(userCriteriaHost, nextState, criteriaMountOpts());
+        if (sentPhoto || data.photo_used) {
+          criteriaAfterPhoto = snapshotCriteriaState();
+        }
       }
       renderTechDebug(data, {
         query,
@@ -2067,10 +2882,31 @@
       const warn = warnList[0];
       const linkCount = Array.isArray(data.sources) ? data.sources.length : 0;
       const webCount = Array.isArray(data.web_results) ? data.web_results.length : 0;
+      const catalogReason =
+        (data.offers && data.offers.need_match && data.offers.need_match.reason) ||
+        (data.offers && data.offers.catalog && data.offers.catalog.reason) ||
+        null;
+      const pickCount =
+        data.offers && data.offers.need_match && Array.isArray(data.offers.need_match.items)
+          ? data.offers.need_match.items.length
+          : data.offers && Array.isArray(data.offers.items)
+            ? data.offers.items.filter((o) => o && o.is_demo === false).length
+            : 0;
       let doneMsg =
-        linkCount > 0
-          ? 'Подготовлено переходов: ' + linkCount + '.'
-          : 'Подходящих переходов нет.';
+        pickCount > 0
+          ? 'Найдено предложений: ' + pickCount + '.'
+          : catalogReason === 'stale_source_only'
+            ? 'Карточки каталога временно скрыты.'
+            : catalogReason === 'budget_currency_unconfirmed'
+              ? 'Бюджет не подтверждён: валюта источником не передана.'
+              : 'Подходящих карточек в каталоге нет.';
+      if (linkCount > 0 && pickCount > 0) {
+        doneMsg += ' Дополнительные поисковые ссылки — в блоке ниже.';
+      } else if (linkCount > 0 && !pickCount) {
+        doneMsg += ' Доступны поисковые ссылки на сайты магазинов.';
+      } else if (!pickCount) {
+        doneMsg += ' Подходящих переходов нет.';
+      }
       if (webCount > 0) doneMsg += ' Доп. веб-ссылок: ' + webCount + '.';
       else if (data.web_search && data.web_search.user_requested && data.web_search.used) {
         doneMsg += ' Дополнительных веб-ссылок нет.';
@@ -2095,7 +2931,7 @@
       if (timeout) {
         title = analyzingPhoto ? 'Фото не разобрано' : 'Сервер не ответил';
         text = analyzingPhoto
-          ? 'Сервер не ответил вовремя. Успешный разбор фото не подменяется.'
+          ? 'Сервер не ответил вовремя. Опишите вещь словами или попробуйте меньшее фото.'
           : 'Сервер не ответил вовремя.';
         if (analyzingPhoto) setPhotoStatus('fail');
       } else if (aborted) {
@@ -2119,7 +2955,10 @@
       } else if (status === 502) {
         title = analyzingPhoto ? 'Фото не разобрано' : 'Ошибка сервиса';
         if (analyzingPhoto) {
-          text = text + ' Успешный разбор не подменяется. Текстовый поиск без фото доступен.';
+          // Сервер уже отдаёт понятную причину в error; действие — коротко.
+          if (!/опишите/i.test(text)) {
+            text = text + ' Текстовый поиск без фото доступен.';
+          }
           setPhotoStatus('fail');
         }
       } else if (status === 422) {
@@ -2149,10 +2988,7 @@
         errBox.appendChild(edit);
       }
       resultsBody.replaceChildren(errBox);
-      if (newQueryRow) {
-        resultsBody.appendChild(newQueryRow);
-        setNewQueryVisible(true);
-      }
+      setNewQueryVisible(true);
       setStatus(text, 'error');
     } finally {
       clearTimeout(timeoutId);
@@ -2163,42 +2999,33 @@
 
   async function loadHealth() {
     const lead = document.getElementById('hero-lead');
-    const leadPhoto =
-      'Опишите вещь или добавьте фото — подготовим переходы к поиску на сайтах. Цену и наличие смотрите у продавца.';
-    const leadText =
-      'Опишите вещь текстом — подготовим переходы к поиску на сайтах. Цену и наличие смотрите у продавца.';
-    const narrow = typeof window.matchMedia === 'function'
-      && window.matchMedia('(max-width: 720px)').matches;
     try {
       const d = await (await fetch('/api/health', { cache: 'no-store' })).json();
       aiEnabled = !!d.ai_enabled;
+      const paid = d.paid_calls || null;
+      const paidBlocked = !!(paid && paid.enabled && Number(paid.remaining) === 0);
+      photoVisionAvailable = !!(
+        aiEnabled &&
+        d.recognition_configured &&
+        !paidBlocked
+      );
       ebayConfigured = !!(d.ebay && d.ebay.configured);
       webSearchServerEnabled = !!(d.web_search && d.web_search.enabled);
       syncWebSearchOptUi();
-      if (photoBtn) {
-        photoBtn.hidden = !aiEnabled;
-        photoBtn.setAttribute('aria-hidden', aiEnabled ? 'false' : 'true');
-      }
-      if (dropzone) dropzone.hidden = !aiEnabled || narrow;
-      if (lead) lead.textContent = aiEnabled ? leadPhoto : leadText;
       if (d && d.ok) {
-        setReady(aiEnabled ? '' : 'is-idle', aiEnabled ? 'Поиск и фото готовы' : 'Поиск готов. Фото выключено');
+        applyPhotoAvailabilityUi(lead);
       } else {
+        photoVisionAvailable = false;
+        applyPhotoAvailabilityUi(lead);
         setReady('is-down', 'Сервис ответил с ошибкой');
-      }
-      if (!aiEnabled) {
-        clearPhoto();
-        if (fileInput) fileInput.value = '';
       }
     } catch (_) {
       aiEnabled = false;
+      photoVisionAvailable = false;
       webSearchServerEnabled = false;
       syncWebSearchOptUi();
-      if (photoBtn) photoBtn.hidden = true;
-      if (dropzone) dropzone.hidden = true;
-      if (lead) lead.textContent = leadText;
+      applyPhotoAvailabilityUi(lead);
       setReady('is-down', 'Сервис недоступен');
-      clearPhoto();
     }
   }
 
@@ -2208,9 +3035,18 @@
       setStatus('Фото убрано.', 'ok');
     });
   }
+  if (saveQueryBtn) {
+    saveQueryBtn.addEventListener('click', () => {
+      saveCurrentQuery();
+    });
+  }
   if (photoBtn) {
     photoBtn.addEventListener('click', () => {
-      if (busy || !aiEnabled) return;
+      if (busy) return;
+      if (!photoVisionAvailable) {
+        setStatus('Разбор фото сейчас недоступен. Опишите вещь текстом.', 'error');
+        return;
+      }
       fileInput.click();
     });
   }
@@ -2222,13 +3058,13 @@
   }
   if (dropzone) {
     dropzone.addEventListener('click', () => {
-      if (busy || !aiEnabled) return;
+      if (busy || !photoVisionAvailable) return;
       fileInput.click();
     });
     ['dragenter', 'dragover'].forEach((name) => {
       dropzone.addEventListener(name, (e) => {
         e.preventDefault();
-        if (aiEnabled) dropzone.classList.add('is-drag');
+        if (photoVisionAvailable) dropzone.classList.add('is-drag');
       });
     });
     ['dragleave', 'drop'].forEach((name) => {
@@ -2306,6 +3142,7 @@
 
   renderSmartHints(null, false, false);
   updateSavedCount();
+  restoreCompare();
   renderAdPlacement();
   if (Criteria && userCriteriaHost) {
     criteriaApi = Criteria.mount(userCriteriaHost, Criteria.emptyState(), criteriaMountOpts());

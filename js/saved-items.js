@@ -13,6 +13,9 @@
 
   var SAVED_KEY = 'vishfind-saved';
   var MIGRATION_FLAG = 'vishfind-saved-migrated-v1';
+  var COMPARE_KEY = 'vishfind-compare';
+  var COMPARE_MAX = 3;
+  var NEED_KEY = 'vishfind-need-match';
 
   function isObject(v) {
     return v != null && typeof v === 'object' && !Array.isArray(v);
@@ -148,6 +151,25 @@
         item.is_demo = true;
         changed = true;
       }
+      // Партнёрские/Takprodam предложения без legal_text нельзя показывать как открываемую ссылку.
+      var affiliateHint =
+        /^takprodam:/i.test(safeStr(item.id)) ||
+        /takprodam/i.test(safeStr(item.source)) ||
+        /takprdm\.ru/i.test(safeStr(item.url));
+      if (affiliateHint && !safeStr(item.legal_text).trim()) {
+        if (!item.marking_incomplete) {
+          item.marking_incomplete = true;
+          changed = true;
+        }
+      }
+      // v1 id: takprodam:source:product — v2: takprodam:source:marketplace:product
+      var idParts = safeStr(item.id).split(':');
+      if (idParts[0] === 'takprodam' && idParts.length === 3) {
+        if (item.id_format !== 'legacy_v1') {
+          item.id_format = 'legacy_v1';
+          changed = true;
+        }
+      }
     }
 
     return { item: item, changed: changed };
@@ -157,6 +179,10 @@
     if (!a || !b || a.type !== b.type) return false;
     if (a.type === 'query') return a.query === b.query && a.search_type === b.search_type;
     if (a.type === 'link') return a.url === b.url;
+    // Реальные предложения: стабильный id (например takprodam:source:product) не даёт перезаписи.
+    if (a.type === 'offer' && safeStr(a.id) && safeStr(b.id) && safeStr(a.id) === safeStr(b.id)) {
+      return true;
+    }
     return (
       safeStr(a.item || a.title) === safeStr(b.item || b.title) &&
       a.price === b.price &&
@@ -286,6 +312,137 @@
     }
   }
 
+  function sanitizeCompareItem(row) {
+    if (!isObject(row)) return null;
+    var key = safeStr(row.key || row.id).trim();
+    var title = safeStr(row.title).trim();
+    if (!key || !title) return null;
+    return {
+      key: key,
+      id: safeStr(row.id || key).slice(0, 160),
+      title: title.slice(0, 300),
+      price: row.price == null || row.price === '' || !Number.isFinite(Number(row.price)) ? null : Number(row.price),
+      currency: safeStr(row.currency).slice(0, 8),
+      price_mode: safeStr(row.price_mode).slice(0, 40),
+      price_note: safeStr(row.price_note).slice(0, 200),
+      source: safeStr(row.source).slice(0, 120),
+      marketplace: safeStr(row.marketplace).slice(0, 80),
+      store_title: safeStr(row.store_title).slice(0, 120),
+      seller_title: safeStr(row.seller_title).slice(0, 120),
+      seller_known: row.seller_known === false ? false : row.seller_known === true ? true : null,
+      image_url: safeStr(row.image_url).slice(0, 500),
+      legal_text: safeStr(row.legal_text).slice(0, 2000),
+      fetched_at: safeStr(row.fetched_at).slice(0, 40),
+      is_demo: false,
+      product_url: safeStr(row.product_url).slice(0, 500),
+      affiliate_url: safeStr(row.affiliate_url).slice(0, 500),
+      url: safeStr(row.url).slice(0, 500),
+      category: safeStr(row.category).slice(0, 120),
+    };
+  }
+
+  function loadCompare(storage, options) {
+    var key = (options && options.key) || COMPARE_KEY;
+    if (!storage || typeof storage.getItem !== 'function') {
+      return { list: [], error: 'Хранилище недоступно в этом браузере.' };
+    }
+    var raw;
+    try {
+      raw = storage.getItem(key);
+    } catch (e) {
+      return { list: [], error: 'Не удалось прочитать сравнение.' };
+    }
+    if (raw == null || raw === '') return { list: [], error: null };
+    var parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      return { list: [], error: 'Сравнение повреждено и не может быть прочитано.' };
+    }
+    if (!Array.isArray(parsed)) return { list: [], error: 'Сравнение имеет неверный формат.' };
+    var list = [];
+    for (var i = 0; i < parsed.length && list.length < COMPARE_MAX; i++) {
+      var item = sanitizeCompareItem(parsed[i]);
+      if (item) list.push(item);
+    }
+    return { list: list, error: null };
+  }
+
+  function writeCompare(storage, list, options) {
+    var key = (options && options.key) || COMPARE_KEY;
+    if (!storage || typeof storage.setItem !== 'function') {
+      return { ok: false, error: 'Хранилище недоступно в этом браузере.' };
+    }
+    var clean = [];
+    var src = Array.isArray(list) ? list : [];
+    for (var i = 0; i < src.length && clean.length < COMPARE_MAX; i++) {
+      var item = sanitizeCompareItem(src[i]);
+      if (item) clean.push(item);
+    }
+    try {
+      storage.setItem(key, JSON.stringify(clean));
+      return { ok: true, error: null, list: clean };
+    } catch (e) {
+      return { ok: false, error: 'Не удалось сохранить сравнение.' };
+    }
+  }
+
+  function loadNeedMatch(storage, options) {
+    var key = (options && options.key) || NEED_KEY;
+    if (!storage || typeof storage.getItem !== 'function') {
+      return { state: { query: '', exclude_ids: [] }, error: 'Хранилище недоступно в этом браузере.' };
+    }
+    var raw;
+    try {
+      raw = storage.getItem(key);
+    } catch (e) {
+      return { state: { query: '', exclude_ids: [] }, error: 'Не удалось прочитать подбор.' };
+    }
+    if (raw == null || raw === '') return { state: { query: '', exclude_ids: [] }, error: null };
+    var parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      return { state: { query: '', exclude_ids: [] }, error: 'Подбор повреждён.' };
+    }
+    if (!isObject(parsed)) return { state: { query: '', exclude_ids: [] }, error: 'Подбор имеет неверный формат.' };
+    var ids = [];
+    var src = Array.isArray(parsed.exclude_ids) ? parsed.exclude_ids : [];
+    for (var i = 0; i < src.length && ids.length < 40; i++) {
+      var id = safeStr(src[i]).trim().slice(0, 160);
+      if (id) ids.push(id);
+    }
+    return {
+      state: {
+        query: safeStr(parsed.query).slice(0, 300),
+        exclude_ids: ids,
+      },
+      error: null,
+    };
+  }
+
+  function writeNeedMatch(storage, state, options) {
+    var key = (options && options.key) || NEED_KEY;
+    if (!storage || typeof storage.setItem !== 'function') {
+      return { ok: false, error: 'Хранилище недоступно в этом браузере.' };
+    }
+    var next = {
+      query: safeStr(state && state.query).slice(0, 300),
+      exclude_ids: [],
+    };
+    var src = state && Array.isArray(state.exclude_ids) ? state.exclude_ids : [];
+    for (var i = 0; i < src.length && next.exclude_ids.length < 40; i++) {
+      var id = safeStr(src[i]).trim().slice(0, 160);
+      if (id && next.exclude_ids.indexOf(id) < 0) next.exclude_ids.push(id);
+    }
+    try {
+      storage.setItem(key, JSON.stringify(next));
+      return { ok: true, error: null, state: next };
+    } catch (e) {
+      return { ok: false, error: 'Не удалось сохранить подбор.' };
+    }
+  }
+
   function renameSavedItem(list, id, newName) {
     var name = safeStr(newName).trim();
     if (!name) return { list: list, changed: false, error: 'Введите название.' };
@@ -313,6 +470,12 @@
     createMemoryStorage: createMemoryStorage,
     loadSaved: loadSaved,
     writeSaved: writeSaved,
+    COMPARE_KEY: COMPARE_KEY,
+    loadCompare: loadCompare,
+    writeCompare: writeCompare,
+    NEED_KEY: NEED_KEY,
+    loadNeedMatch: loadNeedMatch,
+    writeNeedMatch: writeNeedMatch,
     renameSavedItem: renameSavedItem,
   };
 });

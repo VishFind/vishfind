@@ -5,11 +5,18 @@
   "description": "iSearch — поиск редкой/винтажной одежды: разбор запроса и ссылки на площадки (Node.js без npm-зависимостей)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node scripts/prepare-catalog.js && node server.js",
+    "encrypt-catalog": "node scripts/encrypt-catalog.js",
+    "prepare-catalog": "node scripts/prepare-catalog.js",
     "test": "node --test",
     "compare-photo": "node scripts/compare-photo-pipelines.js",
     "marketplace-report": "node scripts/marketplace-report.js",
-    "query-corpus": "node scripts/run-query-corpus.js"
+    "query-corpus": "node scripts/run-query-corpus.js",
+    "import-takprodam": "node scripts/import-takprodam.js",
+    "import-admitad-feeds": "node scripts/import-admitad-feeds.js",
+    "migrate-takprodam-catalog": "node scripts/migrate-takprodam-catalog-v2.js",
+    "takprodam-catalog-stats": "node scripts/takprodam-catalog-stats.js",
+    "takprodam-discover-shops": "node scripts/takprodam-discover-shops.js"
   },
   "engines": {
     "node": ">=18.0.0"

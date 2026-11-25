@@ -40,8 +40,8 @@
       } catch (e2) {}
     })();
   </script>
-  <link rel="stylesheet" href="css/fonts.css"/>
-  <link rel="stylesheet" href="css/site.css"/>
+  <link rel="stylesheet" href="css/fonts.css?v=20261115-rel1"/>
+  <link rel="stylesheet" href="css/site.css?v=20261115-rel1"/>
   <meta name="takprodam-verification" content="0ad0157c-11d0-4325-8778-a058b4f8bb68">
   <meta name="mitgo-verification" content="b4b750cb-158b-4a26-854f-3ce8f9ca8284" />
 </head>
@@ -135,6 +135,11 @@
         </ul>
 
         <p class="status" id="status" role="status" aria-live="polite" hidden></p>
+
+        <div class="query-actions" id="query-actions" hidden>
+          <button type="button" class="btn btn-outline" id="btn-save-query" title="Сохранить текущий запрос" aria-label="Сохранить запрос">Сохранить запрос</button>
+          <button type="button" class="btn btn-neutral" id="btn-new-query" title="Очистить текущий поиск" aria-label="Новый запрос">Новый запрос</button>
+        </div>
       </div>
     </section>
 
@@ -144,9 +149,6 @@
         <div id="compare-slot"></div>
       </div>
     </section>
-    <div class="new-query-row" id="new-query-row" hidden>
-      <button type="button" class="btn btn-ghost" id="btn-new-query" title="Очистить текущий поиск" aria-label="Новый запрос">Новый запрос</button>
-    </div>
 
     <section class="page-block ad-block reveal" id="ad-placement" aria-labelledby="ad-title">
       <div class="wrap">
@@ -192,6 +194,7 @@
     </div>
     <div class="wrap site-footer-note">
       VishFind — сервис подбора одежды и аксессуаров: поиск по запросу и сравнение предложений; покупка у продавца.
+      Маркировка конкретного предложения показывается у карточки, а не только здесь.
     </div>
   </footer>
 
@@ -215,11 +218,12 @@
   </div>
 
   <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden/>
-  <script src="js/theme.js" defer></script>
-  <script src="js/welcome-scene-data.js" defer></script>
-  <script src="js/welcome-splash.js" defer></script>
-  <script src="js/saved-items.js" defer></script>
-  <script src="js/criteria-panel.js" defer></script>
-  <script src="js/search.js" defer></script>
+  <script src="js/theme.js?v=20261115-rel1" defer></script>
+  <script src="js/welcome-scene-data.js?v=20261115-rel1" defer></script>
+  <script src="js/welcome-splash.js?v=20261115-rel1" defer></script>
+  <script src="js/saved-items.js?v=20261115-rel1" defer></script>
+  <script src="js/criteria-panel.js?v=20261115-rel1" defer></script>
+  <script src="js/compare-view.js?v=20261115-rel1" defer></script>
+  <script src="js/search.js?v=20261115-rel1" defer></script>
 </body>
 </html>

@@ -39,6 +39,8 @@ const ebayProvider = createEbayProvider({
   circuitThreshold: config.ebay.circuitThreshold,
   circuitCooldownMs: config.ebay.circuitCooldownMs,
 });
+const takprodamCatalog = require('./lib/takprodam-catalog');
+const needMatch = require('./lib/need-match');
 
 const ROOT = __dirname;
 
@@ -62,11 +64,23 @@ const PHOTO_CONCURRENCY = Math.max(1, Number(config.ollama.photoConcurrency || 1
 /** Явный провайдер фото: ollama | timeweb (без авто-failover). */
 const PHOTO_PROVIDER = config.photoProvider === 'timeweb' ? 'timeweb' : 'ollama';
 const PHOTO_TOTAL_BUDGET_MS = config.photoTotalBudgetMs;
+const PHOTO_ONE_SHOT = !!config.photoOneShot;
 const TIMEWEB_URL = config.timeweb.url;
 const TIMEWEB_MODEL = config.timeweb.model;
 const TIMEWEB_API_KEY = config.timeweb.apiKey;
 const timewebVision = require('./lib/timeweb-vision');
+const paidCallCounter = require('./lib/paid-call-counter');
+const {
+  validatePhotoProduct,
+  applyProductTypeNormalization,
+} = require('./lib/photo-product');
+const crypto = require('crypto');
 let photoInFlight = 0;
+
+function newRequestId() {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return 'req_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+}
 
 /** Общий слот для /api/search и /api/find. Захват синхронный, без очереди. */
 function acquirePhotoSlot() {
@@ -160,7 +174,9 @@ const SECURITY_HEADERS = {
   // inline script темы в HTML — нужен 'unsafe-inline' для script
   'Content-Security-Policy':
     "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; " +
-    "img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; " +
+    // CDN изображений из фида Takprodam (без произвольного прокси и без отключения CSP).
+    // Hosts подтверждены probe'ом image_url: Ozon, Lamoda.
+    "img-src 'self' data: blob: https://ir.ozone.ru https://a.lmcdn.ru; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; " +
     "connect-src 'self'; font-src 'self'; object-src 'none'",
 };
 
@@ -387,20 +403,6 @@ function cleanAttr(v) {
   return s;
 }
 
-/** Честный отказ: на фото нет одежды. */
-function isNoGarmentResult(fields) {
-  if (!fields) return true;
-  const hasType = !!(cleanAttr(fields.garment_type) || cleanAttr(fields.subtype));
-  const d = String(fields.description || '').toLowerCase();
-  const saysNo =
-    /нет одежд|не\s*(видн\w+\s+)?одежд|одежд\w+\s+нет|no clothing|not (wearing|a garment)|электрон|смартфон|наушник|phone|headphones/i.test(
-      d
-    );
-  if (saysNo && !hasType) return true;
-  if (!hasType && !cleanAttr(fields.color_primary) && !cleanAttr(fields.material)) return true;
-  return false;
-}
-
 /** attributes из фото/ручной правки: заполняют только пустые поля текста (текст важнее). */
 function applyAttributes(parsed, attrs) {
   if (!attrs || typeof attrs !== 'object') return parsed;
@@ -532,6 +534,24 @@ async function handleSearch(req, res) {
   const userWantsWeb = checked.value.webSearch;
   const preferCheaper = checked.value.preferCheaper;
   const priceSort = checked.value.priceSort || (preferCheaper ? 'asc' : 'default');
+  const requestId = image ? newRequestId() : null;
+  let photoDiag = image
+    ? {
+        request_id: requestId,
+        provider: PHOTO_PROVIDER,
+        model: PHOTO_PROVIDER === 'timeweb' ? TIMEWEB_MODEL : MODEL,
+        pipeline: PHOTO_PIPELINE,
+        one_shot: PHOTO_ONE_SHOT,
+        stage: null,
+        code: null,
+        validation: null,
+        normalized_category: null,
+        duration_ms: null,
+        provider_http_status: null,
+        usage: null,
+        paid: paidCallCounter.publicStatus(process.env),
+      }
+    : null;
   // Доставка выведена из пользовательского сценария: не применяем даже при старом payload.
   const deliveryPreference = 'any';
 
@@ -604,25 +624,98 @@ async function handleSearch(req, res) {
       photo_attrs = publicPhotoAttrs(analysis);
       photo_pipeline = analysis.pipeline || null;
       if (analysis._usage) photo_attrs = { ...photo_attrs, usage: analysis._usage };
+      if (photoDiag) {
+        photoDiag.stage = 'ok';
+        photoDiag.code = null;
+        photoDiag.duration_ms =
+          analysis._duration_ms != null ? analysis._duration_ms : photoDiag.duration_ms;
+        photoDiag.provider_http_status =
+          analysis._provider_http_status != null
+            ? analysis._provider_http_status
+            : photoDiag.provider_http_status;
+        photoDiag.usage = analysis._usage || null;
+        photoDiag.paid = paidCallCounter.publicStatus(process.env);
+        photoDiag.model = analysis._model || photoDiag.model;
+        photoDiag.validation = analysis._validation || 'supported_product';
+        photoDiag.normalized_category = analysis.category || analysis.garment_type || null;
+      }
       parsed = mergeVisionIntoParsed(parsed, analysis);
       const n = normalizeCriteria(parsed);
       parsed = { ...parsed, ...n };
       photo_used = true;
+      logger.info('Фотоанализ ок', {
+        request_id: requestId,
+        provider: PHOTO_PROVIDER,
+        model: photoDiag && photoDiag.model,
+        duration_ms: photoDiag && photoDiag.duration_ms,
+        provider_http_status: photoDiag && photoDiag.provider_http_status,
+        usage: photoDiag && photoDiag.usage,
+        paid: photoDiag && photoDiag.paid,
+        garment_type: analysis && analysis.garment_type,
+        color_primary: analysis && analysis.color_primary,
+        brand: analysis && analysis.brand,
+      });
     } catch (e) {
-      logger.warn('Фотоанализ не удался', { error: e.message, provider: PHOTO_PROVIDER, code: e.code });
+      if (photoDiag) {
+        photoDiag.stage = e.stage || e.code || 'provider_error';
+        photoDiag.code = e.code || e.name || 'PHOTO_FAIL';
+        photoDiag.validation = e.validation || null;
+        photoDiag.normalized_category = e.normalized_category || null;
+        photoDiag.duration_ms = e.duration_ms != null ? e.duration_ms : null;
+        photoDiag.provider_http_status =
+          e.provider_http_status != null ? e.provider_http_status : null;
+        photoDiag.usage = e.usage || null;
+        photoDiag.paid = e.paid || paidCallCounter.publicStatus(process.env);
+        if (e.model) photoDiag.model = e.model;
+      }
+      logger.warn('Фотоанализ не удался', {
+        request_id: requestId,
+        error: e.message,
+        provider: PHOTO_PROVIDER,
+        code: e.code,
+        stage: photoDiag && photoDiag.stage,
+        validation: photoDiag && photoDiag.validation,
+        normalized_category: photoDiag && photoDiag.normalized_category,
+        duration_ms: photoDiag && photoDiag.duration_ms,
+        provider_http_status: photoDiag && photoDiag.provider_http_status,
+        paid: photoDiag && photoDiag.paid,
+      });
       let msg = `Разбор фото не удался: ${e.message}`;
+      let userError = null;
       if (e.name === 'TimeoutError' || e.code === 'TIMEWEB_TIMEOUT' || e.code === 'PHOTO_BUDGET') {
         msg = `Модель не ответила вовремя. Попробуйте меньшее фото или повторите позже (${PHOTO_PROVIDER}).`;
+        userError = 'Модель не ответила вовремя. Попробуйте меньшее фото или опишите вещь словами.';
       } else if (e.code === 'TIMEWEB_NO_KEY') {
         msg = 'Разбор фото через Timeweb: не задан TIMEWEB_AI_API_KEY на сервере.';
+        userError = msg;
+      } else if (e.code === 'PAID_CALL_LIMIT') {
+        msg = e.message;
+        userError =
+          'Платная проверка фото сейчас отключена: лимит этапа исчерпан. Текстовый поиск без фото работает.';
       } else if (e.code === 'TIMEWEB_AUTH' || e.code === 'TIMEWEB_RATE' || e.code === 'TIMEWEB_SERVICE') {
         msg = e.message;
+        userError = e.message + ' Опишите вещь словами.';
+      } else if (
+        e.code === 'PHOTO_NO_SUBJECT' ||
+        e.code === 'PHOTO_UNCLEAR' ||
+        e.code === 'PHOTO_NO_GARMENT'
+      ) {
+        userError =
+          e.message ||
+          'Не удалось определить предмет на фото. Загрузите другое фото или опишите словами.';
+      } else if (e.code === 'PHOTO_UNSUPPORTED') {
+        userError =
+          e.message ||
+          'Категория на фото сейчас не поддерживается поиском. Опишите нужную вещь словами.';
+      } else if (e.code === 'PHOTO_BAD_JSON' || e.code === 'PHOTO_INVALID') {
+        userError = 'Ошибка ответа анализатора. Опишите вещь словами.';
       } else if (
         PHOTO_PROVIDER === 'ollama' &&
         /fetch failed|ECONNREFUSED/i.test(e.message + (e.cause ? e.cause.message : ''))
       ) {
         msg =
           'Ollama не запущена. Установите Ollama, выполните ollama pull qwen3-vl:4b-instruct, запустите Ollama и повторите.';
+        userError = msg;
       }
       // Не подмешиваем частичный/чужой результат vision: photo_* остаются пустыми.
       photo_used = false;
@@ -649,15 +742,20 @@ async function handleSearch(req, res) {
         // Продолжаем выдачу links только по pre-photo parsed.
       } else {
         const friendly =
-          /JSON|формат|разобрать|распозна|Failed to load image|400|нет одежд/i.test(msg) ||
-          e.name === 'TimeoutError';
+          /JSON|формат|разобрать|распозна|Failed to load image|400|предмет|поддерж/i.test(msg) ||
+          e.name === 'TimeoutError' ||
+          e.code === 'PAID_CALL_LIMIT' ||
+          e.code === 'PHOTO_NO_GARMENT' ||
+          e.code === 'PHOTO_NO_SUBJECT' ||
+          e.code === 'PHOTO_UNCLEAR' ||
+          e.code === 'PHOTO_UNSUPPORTED' ||
+          e.code === 'PHOTO_INVALID' ||
+          e.code === 'PHOTO_BAD_JSON';
         return send(res, 502, {
-          error: friendly
-            ? /нет одежд/i.test(msg)
-              ? 'На фото не видно одежды. Загрузите фото вещи или опишите словами.'
-              : 'Не удалось разобрать фото. Опишите вещь словами.'
-            : msg,
+          error: userError || (friendly ? 'Не удалось разобрать фото. Опишите вещь словами.' : msg),
           detail: msg,
+          request_id: requestId,
+          photo_diag: photoDiag,
           photo_used: false,
           keep_text_input: true,
           note: NOTE,
@@ -860,10 +958,74 @@ async function handleSearch(req, res) {
     }
   }
 
-  // Предложения: eBay API + попытка публичных витрин (Peak/CULTT) + демо.
+  // Предложения: Takprodam (локальный импорт) + eBay API + публичные витрины + демо.
   const budgetForOffers =
     parsed.budget_max != null ? parsed.budget_max : parsed.budget;
   const demoOffersItems = offersApi.findOffers({ parsed, budget: budgetForOffers });
+
+  let takprodamItems = [];
+  let takprodamMeta = {
+    enabled: !!config.takprodam.enabled,
+    available: false,
+    fresh: false,
+    matched: 0,
+    reason: null,
+    note: null,
+    stale_skipped: 0,
+    need_match: null,
+  };
+  if (config.takprodam.enabled) {
+    const loaded = takprodamCatalog.loadCatalogFile(config.takprodam.catalogPath);
+    if (!loaded.ok) {
+      takprodamMeta.reason = loaded.error === 'missing' ? 'catalog_missing' : 'catalog_unreadable';
+      takprodamMeta.note =
+        'Каталог Takprodam недоступен. Запустите импорт на сервере (npm run import-takprodam).';
+    } else if (!takprodamCatalog.isCatalogFresh(loaded.catalog, config.takprodam.catalogMaxAgeHours)) {
+      takprodamMeta.available = true;
+      takprodamMeta.fresh = false;
+      takprodamMeta.reason = 'catalog_stale';
+      takprodamMeta.note =
+        'Каталог Takprodam устарел. Обновите импорт — просроченные записи не показываем как свежие.';
+    } else {
+      takprodamMeta.available = true;
+      takprodamMeta.fresh = true;
+      const found = takprodamCatalog.searchCatalog(loaded.catalog, parsed, {
+        max: 12,
+        isProd: config.isProd,
+        maxAgeHours: config.takprodam.catalogMaxAgeHours,
+      });
+      takprodamItems = found.items || [];
+      takprodamMeta.matched = takprodamItems.length;
+      takprodamMeta.reason = found.reason;
+      takprodamMeta.stale_skipped = found.stale_skipped || 0;
+      if (!takprodamItems.length) {
+        if (found.reason === 'budget_currency_unconfirmed') {
+          takprodamMeta.note =
+            'Не удалось подтвердить соответствие бюджету: источник не передал валюту. Это не означает, что подходящих товаров на рынке нет.';
+        } else if (found.reason === 'stale_source_only') {
+          takprodamMeta.note =
+            'Предложения по этому запросу временно не показываем: данные магазина требуют обновления.';
+        } else {
+          takprodamMeta.note =
+            'В подключённом каталоге подходящих товаров пока не найдено';
+        }
+      } else {
+        takprodamMeta.note =
+          'Подборка из ограниченного локального каталога — не весь рынок. Цену и наличие уточняйте у продавца.';
+      }
+      const excludeIds = Array.isArray(body && body.need_match && body.need_match.exclude_ids)
+        ? body.need_match.exclude_ids.filter((id) => typeof id === 'string' && id.length <= 160).slice(0, 40)
+        : [];
+      takprodamMeta.need_match = needMatch.matchNeeds(loaded.catalog, parsed, {
+        max: 5,
+        isProd: config.isProd,
+        maxAgeHours: config.takprodam.catalogMaxAgeHours,
+        exclude_ids: excludeIds,
+        raw_query: query,
+      });
+    }
+  }
+
   let ebayItems = [];
   let ebayError = null;
   if (ebayProvider.isConfigured() && parsed.search_phrase) {
@@ -946,8 +1108,8 @@ async function handleSearch(req, res) {
     })
   );
 
-  const realProductItems = [...htmlProducts, ...ebayItems].slice(0, 12);
-  // Демо не смешиваем с реальными offers (отдельное поле для возможной рекламы).
+  // Takprodam сначала; демо не смешиваем с реальными offers.
+  const realProductItems = [...takprodamItems, ...htmlProducts, ...ebayItems].slice(0, 12);
 
   // FX: без live-источника — только статус; исходный бюджет не меняем.
   const fx = fxRates.publicStatus();
@@ -960,6 +1122,14 @@ async function handleSearch(req, res) {
     conversion: null,
     fx,
   };
+
+  const offersNote = takprodamItems.length
+    ? 'Партнёрские предложения из одобренных программ. VishFind не продаёт товары и не принимает оплату — цена, наличие и доставка на сайте продавца. У каждой карточки — маркировка рекламы.'
+    : realProductItems.length
+      ? 'Карточки с подтверждённым происхождением данных. Search_link — отдельно.'
+      : takprodamMeta.enabled && takprodamMeta.note
+        ? takprodamMeta.note
+        : 'Живых карточек товара нет — показаны поисковые переходы. Цену смотрите на сайте.';
 
   send(res, 200, {
     parsed: publicParsed(parsed),
@@ -975,9 +1145,19 @@ async function handleSearch(req, res) {
     offers: {
       is_demo: false,
       has_live_products: realProductItems.length > 0,
-      note: realProductItems.length
-        ? 'Карточки с подтверждённым происхождением данных. Search_link — отдельно.'
-        : 'Живых карточек товара нет — показаны поисковые переходы. Цену смотрите на сайте.',
+      note: offersNote,
+      catalog: {
+        provider: 'takprodam',
+        enabled: takprodamMeta.enabled,
+        available: takprodamMeta.available,
+        fresh: takprodamMeta.fresh,
+        matched: takprodamMeta.matched,
+        reason: takprodamMeta.reason,
+        stale_skipped: takprodamMeta.stale_skipped || 0,
+        label: 'Реальные предложения из подключённого каталога',
+        empty_message: 'В подключённом каталоге подходящих товаров пока не найдено',
+      },
+      need_match: takprodamMeta.need_match || null,
       ebay_error: ebayError,
       product_fetch_notes: productNotes,
       items: realProductItems,
@@ -998,12 +1178,28 @@ async function handleSearch(req, res) {
     search_phrase_en_note: searchPhraseEnMeta.search_phrase_en_note,
     warnings: responseWarnings,
     photo_used,
+    request_id: requestId,
+    photo_diag: photoDiag,
     prices: null,
     prices_note:
       'Отсутствующая цена не выдумывается. У поисковых переходов — «Цена на сайте».',
     note: NOTE,
     providers: providers.listProviders(),
   });
+  if (image || photo_used || requestId) {
+    const nm = takprodamMeta.need_match || null;
+    logger.info('Поиск после фото', {
+      request_id: requestId,
+      photo_used,
+      category: parsed && parsed.category,
+      color: parsed && parsed.color,
+      search_phrase: parsed && parsed.search_phrase,
+      cards: Array.isArray(realProductItems) ? realProductItems.length : 0,
+      catalog_reason: takprodamMeta.reason || null,
+      need_match_reason: nm && nm.reason,
+      paid: paidCallCounter.publicStatus(process.env),
+    });
+  }
 }
 
 // =====================================================================
@@ -1073,14 +1269,16 @@ function buildPhotoPrompt(query, movie, strict) {
   const lines = [
     strict
       ? 'Ответь ТОЛЬКО валидным JSON по схеме. Никакого текста вокруг, никаких markdown.'
-      : 'Разбери одежду на фото максимально детально для поиска похожих вещей.',
+      : 'Разбери вещь на фото для поиска похожих товаров: одежда, обувь или аксессуары (сумка, портмоне, браслет, украшения и т.п.).',
     'Все текстовые значения — на русском (кроме дословного visible_text). JSON null, не строка "null".',
     'Поля: garment_type, subtype, color_primary, color_extra[], material, pattern, collar, closure, pockets, length, fit, hardware_and_details, era_or_style, visible_text[], brand, model_name, description.',
-    'subtype — узкий фасон (бомбер, косуха, авиатор, тракер и т.п.), если видно; иначе null.',
+    'garment_type — тип товара (не только одежда): например рубашка, куртка, сумка, портмоне, браслет, украшения. Для аксессуаров тоже заполняй garment_type.',
+    'subtype — узкий фасон (бомбер, косуха; для украшений — плетение/подвески и т.п.), если видно; иначе null.',
     'era_or_style — только если явно видно (90-е, workwear, авангард); иначе null.',
     'brand и model_name: ТОЛЬКО если логотип или название читаются на фото. Иначе строго null. Не угадывай по силуэту.',
     'visible_text — читаемый текст/логотипы/бирки дословно; если нечитаемо — [].',
-    'Если на фото нет одежды — garment_type=null и description честно скажи, что одежды нет.',
+    'Если на фото нет товара для поиска (не одежда/обувь/аксессуар) — garment_type=null и в description честно опиши, что подходящего предмета нет.',
+    '«Нет одежды», но есть сумка/браслет/портмоне — это валидный товар: укажи тип в garment_type.',
     'Не выдумывай размер и цену. Неуверенные поля — null или [].',
     'description — одно предложение по-русски.',
     query ? `Дополнительный текст покупателя: """${query}"""` : '',
@@ -1091,8 +1289,8 @@ function buildPhotoPrompt(query, movie, strict) {
 
 function buildFreeDescribePrompt(query, movie) {
   const lines = [
-    'Опиши одежду на фото подробно по-русски одним связным текстом (8–15 предложений максимум).',
-    'Укажи тип и подтип, цвета, материал, крой, воротник, застёжку, карманы, длину, фурнитуру, принты, потёртости, эпоху/стиль если видно.',
+    'Опиши вещь на фото подробно по-русски одним связным текстом (8–15 предложений максимум): одежда, обувь или аксессуар.',
+    'Укажи тип (в т.ч. сумка, портмоне, браслет), подтип, цвета, материал, крой/форму, фурнитуру, принты, эпоху/стиль если видно.',
     'Любой читаемый текст/логотип/бирку процитируй дословно. Бренд и модель называй ТОЛЬКО если они читаются на фото — иначе напиши, что бренд не виден.',
     'Не выдумывай точную модель каталога и не угадывай бренд по фасону.',
     query ? `Текст покупателя: """${query}"""` : '',
@@ -1105,7 +1303,7 @@ function buildStructFromTextPrompt(freeText, strict) {
   const lines = [
     strict
       ? 'Преобразуй описание в ТОЛЬКО валидный JSON по схеме. Без markdown.'
-      : 'Преобразуй описание одежды в JSON по схеме.',
+      : 'Преобразуй описание вещи (одежда или аксессуар) в JSON по схеме. garment_type — тип товара, включая сумку/браслет/портмоне.',
     'Правила: brand и model_name только если в тексте явно сказано, что они видны/прочитаны; иначе null.',
     'Не добавляй признаков, которых нет в описании.',
     'Описание:',
@@ -1148,6 +1346,13 @@ const EN_TYPE_RU = {
   boots: 'ботинки',
   bomber: 'бомбер',
   blazer: 'пиджак',
+  bracelet: 'браслет',
+  bag: 'сумка',
+  handbag: 'сумка',
+  purse: 'сумка',
+  wallet: 'портмоне',
+  jewelry: 'украшения',
+  jewellery: 'украшения',
 };
 const EN_COLOR_RU = {
   red: 'красный',
@@ -1283,19 +1488,20 @@ function parsePhotoFields(raw) {
     search_phrase: null,
   };
 
+  const normalized = applyProductTypeNormalization(fields);
   const phraseBits = [
-    fields.color_primary,
-    ...(fields.color_extra || []),
-    fields.material,
-    fields.garment_type,
-    fields.subtype,
-    fields.pattern,
-    fields.closure,
-    fields.hardware_and_details,
-    fields.brand,
+    normalized.color_primary,
+    ...(normalized.color_extra || []),
+    normalized.material,
+    normalized.garment_type,
+    normalized.subtype,
+    normalized.pattern,
+    normalized.closure,
+    normalized.hardware_and_details,
+    normalized.brand,
   ].filter(Boolean);
-  fields.search_phrase = phraseBits.join(' ') || fields.description;
-  return fields;
+  normalized.search_phrase = phraseBits.join(' ') || normalized.description;
+  return normalized;
 }
 
 /** content иногда пустой у thinking-моделей — берём thinking как запасной текст. */
@@ -1364,21 +1570,49 @@ async function timewebVisionJson(imageB64, prompt, strictFallbackPrompt, budget)
       timeoutMs: t,
     });
     const fields = parsePhotoFields(data.content);
-    if (fields) fields._usage = data.usage;
-    return { fields, raw: data.content, usage: data.usage };
+    if (fields) {
+      fields._usage = data.usage;
+      fields._provider_http_status = data.provider_http_status;
+      fields._duration_ms = data.duration_ms;
+      fields._paid = data.paid;
+      fields._model = data.model || TIMEWEB_MODEL;
+    }
+    return {
+      fields,
+      raw: data.content,
+      usage: data.usage,
+      provider_http_status: data.provider_http_status,
+      duration_ms: data.duration_ms,
+      paid: data.paid,
+      model: data.model || TIMEWEB_MODEL,
+    };
   };
 
   let lastRaw = '';
   let lastUsage = null;
+  let lastMeta = {};
   let got = await tryOnce(prompt);
   lastRaw = got.raw;
   lastUsage = got.usage;
+  lastMeta = {
+    provider_http_status: got.provider_http_status,
+    duration_ms: got.duration_ms,
+    paid: got.paid,
+    model: got.model,
+  };
   if (got.fields) return got.fields;
 
+  // PHOTO_ONE_SHOT / null fallback: без второго HTTP при невалидном JSON.
   if (strictFallbackPrompt) {
     got = await tryOnce(strictFallbackPrompt);
     lastRaw = got.raw;
     lastUsage = got.usage || lastUsage;
+    lastMeta = {
+      provider_http_status: got.provider_http_status,
+      duration_ms: got.duration_ms,
+      paid: got.paid,
+      model: got.model,
+    };
     if (got.fields) {
       if (lastUsage && !got.fields._usage) got.fields._usage = lastUsage;
       return got.fields;
@@ -1386,7 +1620,13 @@ async function timewebVisionJson(imageB64, prompt, strictFallbackPrompt, budget)
   }
 
   const err = new Error('Модель вернула ответ не в формате JSON');
+  err.code = 'PHOTO_BAD_JSON';
+  err.stage = 'json_parse';
   err.raw = lastRaw;
+  err.provider_http_status = lastMeta.provider_http_status;
+  err.duration_ms = lastMeta.duration_ms;
+  err.paid = lastMeta.paid;
+  err.model = lastMeta.model;
   throw err;
 }
 
@@ -1397,16 +1637,34 @@ async function visionJson(imageB64, prompt, strictFallbackPrompt, budget) {
   return ollamaVisionJson(imageB64, prompt, strictFallbackPrompt, budget);
 }
 
+function throwPhotoValidationError(verdict, fields) {
+  const err = new Error(verdict.message || 'Не удалось определить предмет на фото.');
+  err.code = verdict.code || 'PHOTO_UNCLEAR';
+  err.stage = 'feature_validation';
+  err.validation = verdict.validation || null;
+  err.normalized_category = verdict.category || null;
+  if (fields && fields._usage) err.usage = fields._usage;
+  if (fields && fields._duration_ms != null) err.duration_ms = fields._duration_ms;
+  if (fields && fields._provider_http_status != null) {
+    err.provider_http_status = fields._provider_http_status;
+  }
+  if (fields && fields._paid) err.paid = fields._paid;
+  if (fields && fields._model) err.model = fields._model;
+  throw err;
+}
+
 async function analyzeSchema(query, imageB64, movie, budget) {
   const fields = await visionJson(
     imageB64,
     buildPhotoPrompt(query, movie, false),
-    buildPhotoPrompt(query, movie, true),
+    PHOTO_ONE_SHOT ? null : buildPhotoPrompt(query, movie, true),
     budget
   );
-  if (isNoGarmentResult(fields)) {
-    throw new Error('На фото не удалось распознать одежду');
-  }
+  const verdict = validatePhotoProduct(fields);
+  if (!verdict.ok) throwPhotoValidationError(verdict, fields);
+  fields.garment_type = verdict.garment_type;
+  fields.category = verdict.category;
+  fields._validation = verdict.validation;
   fields.pipeline = 'schema';
   fields._provider = PHOTO_PROVIDER;
   return fields;
@@ -1469,9 +1727,11 @@ async function analyzeTwoPass(query, imageB64, movie, budget) {
     buildStructFromTextPrompt(freeText, true),
     budget
   );
-  if (isNoGarmentResult(fields)) {
-    throw new Error('На фото не удалось распознать одежду');
-  }
+  const verdict = validatePhotoProduct(fields);
+  if (!verdict.ok) throwPhotoValidationError(verdict, fields);
+  fields.garment_type = verdict.garment_type;
+  fields.category = verdict.category;
+  fields._validation = verdict.validation;
   fields.pipeline = 'twopass';
   fields._free_text = freeText;
   fields._provider = PHOTO_PROVIDER;
@@ -1494,8 +1754,9 @@ async function analyze(query, imageB64, movie) {
 
   const budget = createPhotoBudget();
   const mode = PHOTO_PIPELINE;
+  // One-shot: только schema, без twopass/auto (иначе >1 HTTP).
+  if (PHOTO_ONE_SHOT || mode === 'schema') return analyzeSchema(query, imageB64, movie, budget);
   if (mode === 'twopass') return analyzeTwoPass(query, imageB64, movie, budget);
-  if (mode === 'schema') return analyzeSchema(query, imageB64, movie, budget);
 
   // auto: schema, при скудном результате — twopass (тот же бюджет, без смены провайдера)
   let schemaResult = null;
@@ -1719,6 +1980,10 @@ async function handleHealth(res) {
     ai_enabled: AI_ENABLED,
     text_search_ok: true,
     photo_provider: PHOTO_PROVIDER,
+    photo_model: PHOTO_PROVIDER === 'timeweb' ? TIMEWEB_MODEL : MODEL,
+    photo_pipeline: PHOTO_PIPELINE,
+    photo_one_shot: PHOTO_ONE_SHOT,
+    paid_calls: paidCallCounter.publicStatus(process.env),
     recognition_configured:
       AI_ENABLED && (PHOTO_PROVIDER === 'ollama' || (PHOTO_PROVIDER === 'timeweb' && !!TIMEWEB_API_KEY)),
     timeweb_configured: !!TIMEWEB_API_KEY,
@@ -1740,6 +2005,24 @@ async function handleHealth(res) {
       last_error_at: ebayStatus.last_error_at,
       last_check_at: ebayStatus.last_check_at,
     },
+    takprodam: (() => {
+      const enabled = !!config.takprodam.enabled;
+      if (!enabled) return { enabled: false, catalog: 'disabled' };
+      const loaded = takprodamCatalog.loadCatalogFile(config.takprodam.catalogPath);
+      if (!loaded.ok) return { enabled: true, catalog: loaded.error, fresh: false, items: 0 };
+      const fresh = takprodamCatalog.isCatalogFresh(
+        loaded.catalog,
+        config.takprodam.catalogMaxAgeHours
+      );
+      return {
+        enabled: true,
+        catalog: 'ok',
+        fresh,
+        items: Array.isArray(loaded.catalog.items) ? loaded.catalog.items.length : 0,
+        source_id: loaded.catalog.source_id || null,
+        fetched_at: loaded.catalog.fetched_at || null,
+      };
+    })(),
     message: AI_ENABLED
       ? 'AI включён (локальная разработка). Текстовый поиск /api/search работает независимо от Ollama.'
       : 'AI выключен. Текстовый поиск /api/search работает.',
@@ -1805,13 +2088,35 @@ function serveStatic(req, res) {
   if (!isPublicAsset(path.relative(ROOT, full))) return send(res, 403, 'Forbidden');
   fs.stat(full, (err, st) => {
     if (err || !st.isFile()) return send(res, 404, 'Не найдено');
+    const ext = path.extname(full).toLowerCase();
+    // HTML/JS/CSS без долгого кэша: иначе локальная вкладка может держать старую выдачу карточек.
+    const noStore = ext === '.html' || ext === '.js' || ext === '.css' || pathname === '/index.html';
     res.writeHead(200, {
       ...SECURITY_HEADERS,
-      'Content-Type': MIME[path.extname(full).toLowerCase()] || 'application/octet-stream',
-      'Cache-Control': 'no-cache',
+      'Content-Type': MIME[ext] || 'application/octet-stream',
+      'Cache-Control': noStore ? 'no-store' : 'no-cache',
     });
     fs.createReadStream(full).pipe(res);
   });
+}
+
+async function handleOfferStatus(req, res) {
+  const { isSavedOfferCurrent } = require('./lib/takprodam-schema');
+  let body;
+  try {
+    body = JSON.parse(await readBody(req, 16 * 1024));
+  } catch (e) {
+    return send(res, 400, { error: 'Некорректный JSON' });
+  }
+  const ids = Array.isArray(body && body.ids) ? body.ids.slice(0, 30) : [];
+  const loaded = takprodamCatalog.loadCatalogFile(config.takprodam.catalogPath);
+  const catalog = loaded.ok ? loaded.catalog : { items: [] };
+  const statuses = {};
+  for (const id of ids) {
+    if (typeof id !== 'string' || !id || id.length > 160) continue;
+    statuses[id] = isSavedOfferCurrent(id, catalog) ? 'in_catalog' : 'not_in_catalog';
+  }
+  return send(res, 200, { statuses });
 }
 
 // Запуск HTTP-сервера — только при прямом запуске (npm start / node server.js).
@@ -1842,6 +2147,7 @@ if (require.main === module) {
         }
         if (basicAuthBlocks(req, res)) return;
         if (req.method === 'POST' && p === '/api/search') return await handleSearch(req, res);
+        if (req.method === 'POST' && p === '/api/catalog/offer-status') return await handleOfferStatus(req, res);
         if (req.method === 'POST' && p === '/api/find') return await handleFind(req, res);
         if (req.method === 'GET' && p === '/api/health') return await handleHealth(res);
         if (req.method === 'GET' || req.method === 'HEAD') return serveStatic(req, res);

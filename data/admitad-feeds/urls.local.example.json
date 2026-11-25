@@ -1,0 +1,30 @@
+{
+  "note": "Скопируйте в urls.local.json. legal_text — из карточки Admitad «О рекламодателе» или публичной оферты магазина.",
+  "feeds": [
+    {
+      "brand": "Waistline RU",
+      "file": "raw/katalog-waistline_products_20261124_192301.xml",
+      "legal_text": "Реклама. ООО «Линия Талии». ИНН 4706077549"
+    },
+    {
+      "brand": "Shopping Live",
+      "file": "raw/osnovnoi_products_20261125_205100.xml",
+      "legal_text": "Реклама. ООО «Директ Трейд». ИНН 7707741704"
+    },
+    {
+      "brand": "2MOOD",
+      "file": "raw/osnovnoi_products_20261125_205251.xml",
+      "legal_text": "Реклама. ООО «Два настроения». ИНН 5074069895"
+    },
+    {
+      "brand": "Rieker",
+      "file": "raw/fid_osnovnoi_products_20261125_205158.xml",
+      "legal_text": "Реклама. ИП Нуриев Эльшан Агамоглан Оглы. ИНН 370503402372"
+    },
+    {
+      "brand": "Finn Flare",
+      "file": "raw/osnovnoi_products_20261125_205223.xml",
+      "legal_text": "Реклама. ООО «ФФ Стайл». ИНН 7724660935"
+    }
+  ]
+}
