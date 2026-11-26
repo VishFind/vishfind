@@ -217,3 +217,76 @@ test('кнопки без данных: нет качественнее/деше
   assert.equal(res.actions.can_filter_cheaper, false);
   assert.equal(res.actions.edit_requirements, true);
 });
+
+function multiBrandBagCatalog() {
+  const mk = (id, marketplace, title) => ({
+    schema_version: 2,
+    provider: 'admitad',
+    source_id: 1,
+    product_id: id,
+    marketplace,
+    marketplace_key: String(marketplace).toLowerCase().replace(/\s+/g, '_'),
+    store_title: marketplace,
+    title,
+    price: 1000 + id,
+    currency: 'RUB',
+    category_title: 'Аксессуары',
+    tracking_link: 'https://example.test/' + id,
+    external_link: 'https://shop.test/' + id,
+    image_url: 'https://img.test/' + id + '.jpg',
+    legal_text: 'Реклама',
+    fetched_at: '2026-11-15T12:33:44.108Z',
+  });
+  return {
+    fetched_at: '2026-11-15T12:33:44.108Z',
+    marketplaces: {
+      finn_flare: { status: 'ok', last_success_at: '2026-11-15T12:33:44.108Z' },
+      '2mood': { status: 'ok', last_success_at: '2026-11-15T12:33:44.108Z' },
+      shopping_live: { status: 'ok', last_success_at: '2026-11-15T12:33:44.108Z' },
+      waistline: { status: 'ok', last_success_at: '2026-11-15T12:33:44.108Z' },
+      rieker: { status: 'ok', last_success_at: '2026-11-15T12:33:44.108Z' },
+    },
+    items: [
+      mk(1, 'Finn Flare', 'Сумка кожаная Finn 1'),
+      mk(2, 'Finn Flare', 'Сумка кожаная Finn 2'),
+      mk(3, 'Finn Flare', 'Сумка кожаная Finn 3'),
+      mk(4, 'Finn Flare', 'Сумка кожаная Finn 4'),
+      mk(5, 'Finn Flare', 'Сумка кожаная Finn 5'),
+      mk(6, '2MOOD', 'Сумка кожаная Mood 1'),
+      mk(7, 'Shopping Live', 'Сумка кожаная Live 1'),
+      mk(8, 'Waistline RU', 'Сумка кожаная Waist 1'),
+      mk(9, 'Rieker', 'Сумка кожаная Rieker 1'),
+    ],
+  };
+}
+
+test('без бренда в запросе: микс разных брендов, не 5 одного', () => {
+  const res = matchNeeds(
+    multiBrandBagCatalog(),
+    { search_phrase: 'сумка', category: 'сумка' },
+    { max: 5, isProd: false, raw_query: 'сумка' }
+  );
+  assert.equal(res.items.length, 5);
+  const brands = res.items.map((it) => String(it.brand || it.marketplace));
+  assert.equal(new Set(brands).size, 5, brands.join(','));
+  assert.equal(res.mix.mode, 'brand_diverse');
+});
+
+test('с брендом в запросе: до 3 своего и до 2 альтернатив', () => {
+  const res = matchNeeds(
+    multiBrandBagCatalog(),
+    {
+      search_phrase: 'сумка finn flare',
+      category: 'сумка',
+      brand: 'Finn Flare',
+      brands: ['Finn Flare'],
+    },
+    { max: 5, isProd: false, raw_query: 'сумка finn flare' }
+  );
+  assert.equal(res.items.length, 5);
+  const own = res.items.filter((it) => /finn\s*flare/i.test(String(it.brand || it.marketplace)));
+  const alt = res.items.filter((it) => !/finn\s*flare/i.test(String(it.brand || it.marketplace)));
+  assert.equal(own.length, 3);
+  assert.equal(alt.length, 2);
+  assert.equal(res.mix.mode, 'brand_primary_alt');
+});
