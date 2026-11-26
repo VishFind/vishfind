@@ -3331,20 +3331,70 @@ html[data-theme='dark'] .color-swatch.is-light {
   color: var(--danger);
 }
 
-/* Мобильное оглавление критериев: компактно, без растягивания и обрезки */
+/* Мобильные критерии и карточки: ровная сетка, без прыжков и обрезки */
 @media (max-width: 720px) {
+  .criteria-chips,
+  .criteria-chips-host {
+    width: 100%;
+    margin-bottom: 10px;
+  }
+  .criteria-chip-row {
+    gap: 6px;
+  }
   .criteria-chip-wrap {
-    max-width: 100%;
+    flex: 1 1 calc(50% - 6px);
+    max-width: calc(50% - 3px);
     min-width: 0;
-    flex: 0 1 auto;
+  }
+  .criteria-chip-row > .criteria-reset-all {
+    flex: 1 1 100%;
+    max-width: 100%;
   }
   .criteria-chip {
+    width: 100%;
     max-width: 100%;
-    white-space: normal;
-    overflow: visible;
-    text-overflow: unset;
+    justify-content: center;
+    font-size: 0.82rem;
+    padding: 8px 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     height: auto;
     min-height: 40px;
     line-height: 1.25;
+  }
+  .offers.glass {
+    padding: 12px;
+  }
+  .offers-list:has(.offers-row.is-real) {
+    gap: 12px;
+  }
+  .offers-row.is-real {
+    padding: 12px;
+    border-radius: 14px;
+  }
+  .offers-media {
+    aspect-ratio: 4 / 5;
+    border-radius: 10px;
+  }
+  .offers-store {
+    font-size: 0.78rem;
+    letter-spacing: 0.01em;
+  }
+  .offers-name {
+    font-size: 0.95rem;
+    line-height: 1.3;
+  }
+  .offers-price {
+    font-size: 1.05rem;
+  }
+  .offers-actions-secondary .btn {
+    flex: 1 1 calc(50% - 4px);
+    font-size: 0.82rem;
+    padding: 8px 10px;
+  }
+  .offer-tools {
+    flex-wrap: wrap;
+    gap: 6px;
   }
 }

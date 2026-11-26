@@ -1726,8 +1726,10 @@
         li.appendChild(media);
 
         const main = el('div', 'offers-main');
+        // Имя бренда как в фиде/реестре (Finn Flare, 2MOOD…) — без перевода.
+        const brandLabel = String(o.brand || o.marketplace || '').trim();
         main.appendChild(
-          el('p', 'offers-meta offers-store', o.marketplace || 'Нет данных')
+          el('p', 'offers-meta offers-store', brandLabel || 'Нет данных')
         );
         const titleText = o.title || 'Без названия';
         const name = el('p', 'offers-name is-clamped', titleText);
@@ -1747,7 +1749,6 @@
         if (o.price_note) main.appendChild(el('p', 'offers-meta offers-price-note', o.price_note));
         const facts = [];
         if (o.category) facts.push(o.category);
-        if (o.brand) facts.push(o.brand);
         if (o.color) facts.push(o.color);
         if (o.size) facts.push('р. ' + o.size);
         if (facts.length) main.appendChild(el('p', 'offers-meta offers-facts', facts.join(' · ')));

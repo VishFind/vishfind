@@ -254,6 +254,7 @@ function multiBrandBagCatalog() {
       mk(5, 'Finn Flare', 'Сумка кожаная Finn 5'),
       mk(6, '2MOOD', 'Сумка кожаная Mood 1'),
       mk(7, 'Shopping Live', 'Сумка кожаная Live 1'),
+      mk(10, 'Shopping Live', 'Сумка кожаная Live 2'),
       mk(8, 'Waistline RU', 'Сумка кожаная Waist 1'),
       mk(9, 'Rieker', 'Сумка кожаная Rieker 1'),
     ],
@@ -272,7 +273,7 @@ test('без бренда в запросе: микс разных брендо�
   assert.equal(res.mix.mode, 'brand_diverse');
 });
 
-test('с брендом в запросе: до 3 своего и до 2 альтернатив', () => {
+test('с брендом в запросе: 3 своего и 2 одного альтернативного', () => {
   const res = matchNeeds(
     multiBrandBagCatalog(),
     {
@@ -288,5 +289,7 @@ test('с брендом в запросе: до 3 своего и до 2 аль�
   const alt = res.items.filter((it) => !/finn\s*flare/i.test(String(it.brand || it.marketplace)));
   assert.equal(own.length, 3);
   assert.equal(alt.length, 2);
+  const altBrands = new Set(alt.map((it) => String(it.brand || it.marketplace)));
+  assert.equal(altBrands.size, 1, [...altBrands].join(','));
   assert.equal(res.mix.mode, 'brand_primary_alt');
 });
