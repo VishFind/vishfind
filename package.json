@@ -2,11 +2,12 @@
   "name": "isearch-demo",
   "version": "1.0.0",
   "private": true,
-  "description": "VishFind — Node.js 18+ без npm-зависимостей (встроенный http, не Express). audited 1 package при npm ci — ожидаемо.",
+  "description": "VishFind — Node.js 18+ без npm-зависимостей (встроенный http, НЕ Express). «audited 1 package» при npm ci — норма, не ошибка.",
   "main": "server.js",
   "dependencies": {},
   "scripts": {
     "start": "node server.js",
+    "start:prod": "node server.js",
     "encrypt-catalog": "node scripts/encrypt-catalog.js",
     "prepare-catalog": "node scripts/prepare-catalog.js",
     "test": "node --test",

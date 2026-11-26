@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * Перед стартом: расшифровывает catalog.json.gz.enc → catalog.json.
- * Ошибки НЕ валят процесс: сервер должен подняться даже без карточек
- * (иначе Timeweb уходит в restart loop).
+ * Перед/после старта: расшифровывает catalog.json.gz.enc в RAM.
+ * На Timeweb запись 13MB JSON на диск часто роняет контейнер (OOM → restart loop).
+ * Ошибки НЕ валят процесс.
  */
 
 const fs = require('fs');
@@ -59,14 +59,14 @@ function decrypt() {
       : null;
   if (!encPath) {
     console.log('[prepare-catalog] no encrypted catalog, skip');
-    return;
+    return { ok: false, reason: 'no_enc' };
   }
   const key = keyFromEnv();
   if (!key) {
     console.warn(
       '[prepare-catalog] CATALOG_DECRYPT_KEY не задан — карточки партнёров не загрузятся, сервер стартует.'
     );
-    return;
+    return { ok: false, reason: 'no_key' };
   }
 
   const blob = fs.readFileSync(encPath);
@@ -84,23 +84,34 @@ function decrypt() {
   catalog.fetched_at = new Date().toISOString();
   catalog.provider = 'admitad';
 
-  const out = resolveOutPath();
-  fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, JSON.stringify(catalog));
+  const takprodamCatalog = require('../lib/takprodam-catalog');
+  const mem = takprodamCatalog.setRuntimeCatalog(catalog);
+  const itemCount = Array.isArray(catalog.items) ? catalog.items.length : 0;
+
+  // Диск опционален: на маленьких инстансах Timeweb запись ~13MB JSON = OOM.
+  const writeDisk = String(process.env.PARTNER_CATALOG_WRITE_DISK || '').trim() === '1';
+  let out = ':memory:';
+  if (writeDisk) {
+    out = resolveOutPath();
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, JSON.stringify(catalog));
+  }
+
   console.log(
     '[prepare-catalog] decrypted ok, items=',
-    Array.isArray(catalog.items) ? catalog.items.length : 0,
+    itemCount,
+    'memory=',
+    !!(mem && mem.ok),
     'out=',
     out
   );
+  return { ok: true, itemCount, out };
 }
 
 function prepareCatalog() {
   try {
-    decrypt();
-    return { ok: true };
+    return decrypt();
   } catch (e) {
-    // Не exit(1): иначе Timeweb Apps крутит restart loop и не сканирует порт.
     console.error(
       '[prepare-catalog] failed (server will start without partner cards):',
       e && e.message ? e.message : e

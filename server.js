@@ -1981,11 +1981,14 @@ async function handleHealth(res) {
     name: 'vishfind',
     version: config.version,
     // Метка релиза для проверки, что Timeweb поднял нужный билд (не старый rollback).
-    release: 'partner-cards-rank-2026-11-26b',
+    release: 'partner-cards-rank-2026-11-26c',
     env: config.env,
     uptime_sec: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
     partner_catalog_enabled: !!config.partnerCatalog.enabled,
+    partner_catalog_ready: !!(
+      takprodamCatalog.getRuntimeCatalog && takprodamCatalog.getRuntimeCatalog()
+    ),
     ai_enabled: AI_ENABLED,
     text_search_ok: true,
     photo_provider: PHOTO_PROVIDER,
@@ -2182,22 +2185,29 @@ if (require.main === module) {
     })
     .listen(PORT, HOST, () => {
       const shown = HOST === '0.0.0.0' ? 'localhost' : HOST;
+      // Plain console — сразу видно в логах Timeweb (не только JSON logger).
+      console.log(`[boot] VishFind listening on ${HOST}:${PORT} release=partner-cards-rank-2026-11-26c`);
       logger.info(`VishFind запущен: http://${shown}:${PORT} (bind ${HOST})`, {
         env: config.env,
         ai_enabled: AI_ENABLED,
         photo_provider: PHOTO_PROVIDER,
         ebay_configured: ebayProvider.isConfigured(),
         basic_auth: basicAuthActive,
+        release: 'partner-cards-rank-2026-11-26c',
       });
       logger.info(`Провайдеры: ${providers.listProviders().map((p) => `${p.id}:${p.enabled ? 'on' : 'off'}`).join(', ')}`);
-      // Каталог после bind: карточки появятся на следующих запросах.
-      try {
-        require('./scripts/prepare-catalog').prepareCatalog();
-      } catch (e) {
-        logger.warn('prepare-catalog after listen failed', {
-          error: e && e.message ? e.message : String(e),
-        });
-      }
+      // Каталог ПОСЛЕ bind и вне текущего тика: не блокируем healthcheck Timeweb.
+      setTimeout(() => {
+        try {
+          const res = require('./scripts/prepare-catalog').prepareCatalog();
+          console.log('[boot] prepare-catalog done', res && res.ok ? 'ok' : 'skip/fail', res && res.itemCount);
+        } catch (e) {
+          console.error('[boot] prepare-catalog error', e && e.message ? e.message : e);
+          logger.warn('prepare-catalog after listen failed', {
+            error: e && e.message ? e.message : String(e),
+          });
+        }
+      }, 25);
     });
 }
 
