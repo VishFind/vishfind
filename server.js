@@ -958,14 +958,15 @@ async function handleSearch(req, res) {
     }
   }
 
-  // Предложения: Takprodam (локальный импорт) + eBay API + публичные витрины + демо.
+  // Предложения: только одобренные Admitad-фиды (папка raw → catalog) + eBay/демо при наличии.
+  // Takprodam API не используем.
   const budgetForOffers =
     parsed.budget_max != null ? parsed.budget_max : parsed.budget;
   const demoOffersItems = offersApi.findOffers({ parsed, budget: budgetForOffers });
 
-  let takprodamItems = [];
-  let takprodamMeta = {
-    enabled: !!config.takprodam.enabled,
+  let partnerItems = [];
+  let partnerMeta = {
+    enabled: !!config.partnerCatalog.enabled,
     available: false,
     fresh: false,
     matched: 0,
@@ -974,52 +975,56 @@ async function handleSearch(req, res) {
     stale_skipped: 0,
     need_match: null,
   };
-  if (config.takprodam.enabled) {
-    const loaded = takprodamCatalog.loadCatalogFile(config.takprodam.catalogPath);
+  if (config.partnerCatalog.enabled) {
+    const loaded = takprodamCatalog.loadCatalogFile(config.partnerCatalog.catalogPath);
     if (!loaded.ok) {
-      takprodamMeta.reason = loaded.error === 'missing' ? 'catalog_missing' : 'catalog_unreadable';
-      takprodamMeta.note =
-        'Каталог Takprodam недоступен. Запустите импорт на сервере (npm run import-takprodam).';
-    } else if (!takprodamCatalog.isCatalogFresh(loaded.catalog, config.takprodam.catalogMaxAgeHours)) {
-      takprodamMeta.available = true;
-      takprodamMeta.fresh = false;
-      takprodamMeta.reason = 'catalog_stale';
-      takprodamMeta.note =
-        'Каталог Takprodam устарел. Обновите импорт — просроченные записи не показываем как свежие.';
+      partnerMeta.reason = loaded.error === 'missing' ? 'catalog_missing' : 'catalog_unreadable';
+      partnerMeta.note =
+        'Каталог партнёрских фидов недоступен. На сервере нужен prepare-catalog / import-admitad-feeds.';
+    } else if (
+      !takprodamCatalog.isCatalogFresh(loaded.catalog, config.partnerCatalog.catalogMaxAgeHours)
+    ) {
+      partnerMeta.available = true;
+      partnerMeta.fresh = false;
+      partnerMeta.reason = 'catalog_stale';
+      partnerMeta.note =
+        'Каталог партнёрских фидов устарел. Обновите импорт из data/admitad-feeds/raw.';
     } else {
-      takprodamMeta.available = true;
-      takprodamMeta.fresh = true;
+      partnerMeta.available = true;
+      partnerMeta.fresh = true;
       const found = takprodamCatalog.searchCatalog(loaded.catalog, parsed, {
         max: 12,
         isProd: config.isProd,
-        maxAgeHours: config.takprodam.catalogMaxAgeHours,
+        maxAgeHours: config.partnerCatalog.catalogMaxAgeHours,
       });
-      takprodamItems = found.items || [];
-      takprodamMeta.matched = takprodamItems.length;
-      takprodamMeta.reason = found.reason;
-      takprodamMeta.stale_skipped = found.stale_skipped || 0;
-      if (!takprodamItems.length) {
+      partnerItems = found.items || [];
+      partnerMeta.matched = partnerItems.length;
+      partnerMeta.reason = found.reason;
+      partnerMeta.stale_skipped = found.stale_skipped || 0;
+      if (!partnerItems.length) {
         if (found.reason === 'budget_currency_unconfirmed') {
-          takprodamMeta.note =
+          partnerMeta.note =
             'Не удалось подтвердить соответствие бюджету: источник не передал валюту. Это не означает, что подходящих товаров на рынке нет.';
         } else if (found.reason === 'stale_source_only') {
-          takprodamMeta.note =
+          partnerMeta.note =
             'Предложения по этому запросу временно не показываем: данные магазина требуют обновления.';
         } else {
-          takprodamMeta.note =
+          partnerMeta.note =
             'В подключённом каталоге подходящих товаров пока не найдено';
         }
       } else {
-        takprodamMeta.note =
-          'Подборка из ограниченного локального каталога — не весь рынок. Цену и наличие уточняйте у продавца.';
+        partnerMeta.note =
+          'Партнёрские предложения из одобренных программ (Admitad). VishFind не продаёт товары — цену и наличие уточняйте у продавца.';
       }
       const excludeIds = Array.isArray(body && body.need_match && body.need_match.exclude_ids)
-        ? body.need_match.exclude_ids.filter((id) => typeof id === 'string' && id.length <= 160).slice(0, 40)
+        ? body.need_match.exclude_ids
+            .filter((id) => typeof id === 'string' && id.length <= 160)
+            .slice(0, 40)
         : [];
-      takprodamMeta.need_match = needMatch.matchNeeds(loaded.catalog, parsed, {
+      partnerMeta.need_match = needMatch.matchNeeds(loaded.catalog, parsed, {
         max: 5,
         isProd: config.isProd,
-        maxAgeHours: config.takprodam.catalogMaxAgeHours,
+        maxAgeHours: config.partnerCatalog.catalogMaxAgeHours,
         exclude_ids: excludeIds,
         raw_query: query,
       });
@@ -1109,7 +1114,7 @@ async function handleSearch(req, res) {
   );
 
   // Takprodam сначала; демо не смешиваем с реальными offers.
-  const realProductItems = [...takprodamItems, ...htmlProducts, ...ebayItems].slice(0, 12);
+  const realProductItems = [...partnerItems, ...htmlProducts, ...ebayItems].slice(0, 12);
 
   // FX: без live-источника — только статус; исходный бюджет не меняем.
   const fx = fxRates.publicStatus();
@@ -1123,12 +1128,12 @@ async function handleSearch(req, res) {
     fx,
   };
 
-  const offersNote = takprodamItems.length
+  const offersNote = partnerItems.length
     ? 'Партнёрские предложения из одобренных программ. VishFind не продаёт товары и не принимает оплату — цена, наличие и доставка на сайте продавца. У каждой карточки — маркировка рекламы.'
     : realProductItems.length
       ? 'Карточки с подтверждённым происхождением данных. Search_link — отдельно.'
-      : takprodamMeta.enabled && takprodamMeta.note
-        ? takprodamMeta.note
+      : partnerMeta.enabled && partnerMeta.note
+        ? partnerMeta.note
         : 'Живых карточек товара нет — показаны поисковые переходы. Цену смотрите на сайте.';
 
   send(res, 200, {
@@ -1147,17 +1152,17 @@ async function handleSearch(req, res) {
       has_live_products: realProductItems.length > 0,
       note: offersNote,
       catalog: {
-        provider: 'takprodam',
-        enabled: takprodamMeta.enabled,
-        available: takprodamMeta.available,
-        fresh: takprodamMeta.fresh,
-        matched: takprodamMeta.matched,
-        reason: takprodamMeta.reason,
-        stale_skipped: takprodamMeta.stale_skipped || 0,
-        label: 'Реальные предложения из подключённого каталога',
+        provider: 'admitad',
+        enabled: partnerMeta.enabled,
+        available: partnerMeta.available,
+        fresh: partnerMeta.fresh,
+        matched: partnerMeta.matched,
+        reason: partnerMeta.reason,
+        stale_skipped: partnerMeta.stale_skipped || 0,
+        label: 'Реальные предложения из одобренных партнёрских фидов',
         empty_message: 'В подключённом каталоге подходящих товаров пока не найдено',
       },
-      need_match: takprodamMeta.need_match || null,
+      need_match: partnerMeta.need_match || null,
       ebay_error: ebayError,
       product_fetch_notes: productNotes,
       items: realProductItems,
@@ -1187,7 +1192,7 @@ async function handleSearch(req, res) {
     providers: providers.listProviders(),
   });
   if (image || photo_used || requestId) {
-    const nm = takprodamMeta.need_match || null;
+    const nm = partnerMeta.need_match || null;
     logger.info('Поиск после фото', {
       request_id: requestId,
       photo_used,
@@ -1195,7 +1200,7 @@ async function handleSearch(req, res) {
       color: parsed && parsed.color,
       search_phrase: parsed && parsed.search_phrase,
       cards: Array.isArray(realProductItems) ? realProductItems.length : 0,
-      catalog_reason: takprodamMeta.reason || null,
+      catalog_reason: partnerMeta.reason || null,
       need_match_reason: nm && nm.reason,
       paid: paidCallCounter.publicStatus(process.env),
     });
@@ -2005,24 +2010,27 @@ async function handleHealth(res) {
       last_error_at: ebayStatus.last_error_at,
       last_check_at: ebayStatus.last_check_at,
     },
-    takprodam: (() => {
-      const enabled = !!config.takprodam.enabled;
-      if (!enabled) return { enabled: false, catalog: 'disabled' };
-      const loaded = takprodamCatalog.loadCatalogFile(config.takprodam.catalogPath);
-      if (!loaded.ok) return { enabled: true, catalog: loaded.error, fresh: false, items: 0 };
+    partner_catalog: (() => {
+      const enabled = !!config.partnerCatalog.enabled;
+      if (!enabled) return { enabled: false, catalog: 'disabled', provider: 'admitad' };
+      const loaded = takprodamCatalog.loadCatalogFile(config.partnerCatalog.catalogPath);
+      if (!loaded.ok) {
+        return { enabled: true, catalog: loaded.error, fresh: false, items: 0, provider: 'admitad' };
+      }
       const fresh = takprodamCatalog.isCatalogFresh(
         loaded.catalog,
-        config.takprodam.catalogMaxAgeHours
+        config.partnerCatalog.catalogMaxAgeHours
       );
       return {
         enabled: true,
+        provider: 'admitad',
         catalog: 'ok',
         fresh,
         items: Array.isArray(loaded.catalog.items) ? loaded.catalog.items.length : 0,
-        source_id: loaded.catalog.source_id || null,
         fetched_at: loaded.catalog.fetched_at || null,
       };
     })(),
+    takprodam: { enabled: false, catalog: 'disabled', note: 'Takprodam API отключён' },
     message: AI_ENABLED
       ? 'AI включён (локальная разработка). Текстовый поиск /api/search работает независимо от Ollama.'
       : 'AI выключен. Текстовый поиск /api/search работает.',
@@ -2109,7 +2117,7 @@ async function handleOfferStatus(req, res) {
     return send(res, 400, { error: 'Некорректный JSON' });
   }
   const ids = Array.isArray(body && body.ids) ? body.ids.slice(0, 30) : [];
-  const loaded = takprodamCatalog.loadCatalogFile(config.takprodam.catalogPath);
+  const loaded = takprodamCatalog.loadCatalogFile(config.partnerCatalog.catalogPath);
   const catalog = loaded.ok ? loaded.catalog : { items: [] };
   const statuses = {};
   for (const id of ids) {

@@ -1,6 +1,6 @@
 'use strict';
 
-/** Упаковать data/admitad-feeds/catalog.json → data/takprodam-catalog/catalog.json.gz.enc */
+/** Упаковать data/admitad-feeds/catalog.json → catalog.json.gz.enc */
 
 const fs = require('fs');
 const path = require('path');
@@ -8,9 +8,10 @@ const zlib = require('zlib');
 const crypto = require('crypto');
 
 const ROOT = path.join(__dirname, '..');
-const SRC = path.join(ROOT, 'data', 'admitad-feeds', 'catalog.json');
-const OUT = path.join(ROOT, 'data', 'takprodam-catalog', 'catalog.json.gz.enc');
-const KEY_FILE = path.join(ROOT, 'data', 'admitad-feeds', 'CATALOG_DECRYPT_KEY.local');
+const FEEDS = path.join(ROOT, 'data', 'admitad-feeds');
+const SRC = path.join(FEEDS, 'catalog.json');
+const OUT = path.join(FEEDS, 'catalog.json.gz.enc');
+const KEY_FILE = path.join(FEEDS, 'CATALOG_DECRYPT_KEY.local');
 
 function loadKey() {
   const fromEnv = String(process.env.CATALOG_DECRYPT_KEY || '').trim();
@@ -30,7 +31,7 @@ function loadKey() {
 }
 
 if (!fs.existsSync(SRC)) {
-  console.error('missing', SRC);
+  console.error('missing', SRC, '— сначала npm run import-admitad-feeds');
   process.exit(1);
 }
 const key = loadKey();

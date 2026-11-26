@@ -239,11 +239,6 @@ async function main() {
   fs.mkdirSync(FEEDS_DIR, { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(migrated.catalog), 'utf8');
 
-  // Дублируем в путь Takprodam-каталога, чтобы текущий server.js подхватил без смены контракта.
-  const tpDir = path.join(ROOT, 'data', 'takprodam-catalog');
-  fs.mkdirSync(tpDir, { recursive: true });
-  fs.writeFileSync(path.join(tpDir, 'catalog.json'), JSON.stringify(migrated.catalog), 'utf8');
-
   console.log(JSON.stringify({ out: OUT, total: all.length, report }, null, 2));
 }
 

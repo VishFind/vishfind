@@ -1,9 +1,8 @@
 'use strict';
 
 /**
- * Перед стартом сервера: если есть зашифрованный каталог и ключ в env —
- * распаковывает data/takprodam-catalog/catalog.json (не коммитится).
- * Без ключа сервер стартует, но карточек не будет.
+ * Перед стартом: расшифровывает data/admitad-feeds/catalog.json.gz.enc → catalog.json.
+ * Источник данных — только одобренные Admitad-фиды (raw/), не Takprodam.
  */
 
 const fs = require('fs');
@@ -12,8 +11,10 @@ const zlib = require('zlib');
 const crypto = require('crypto');
 
 const ROOT = path.join(__dirname, '..');
-const ENC = path.join(ROOT, 'data', 'takprodam-catalog', 'catalog.json.gz.enc');
-const OUT = path.join(ROOT, 'data', 'takprodam-catalog', 'catalog.json');
+const FEEDS = path.join(ROOT, 'data', 'admitad-feeds');
+const ENC = path.join(FEEDS, 'catalog.json.gz.enc');
+const LEGACY_ENC = path.join(ROOT, 'data', 'takprodam-catalog', 'catalog.json.gz.enc');
+const OUT = path.join(FEEDS, 'catalog.json');
 
 function keyFromEnv() {
   const raw = String(process.env.CATALOG_DECRYPT_KEY || '').trim();
@@ -25,7 +26,8 @@ function keyFromEnv() {
 }
 
 function decrypt() {
-  if (!fs.existsSync(ENC)) {
+  const encPath = fs.existsSync(ENC) ? ENC : fs.existsSync(LEGACY_ENC) ? LEGACY_ENC : null;
+  if (!encPath) {
     console.log('[prepare-catalog] no encrypted catalog, skip');
     return;
   }
@@ -36,7 +38,7 @@ function decrypt() {
     );
     return;
   }
-  const blob = fs.readFileSync(ENC);
+  const blob = fs.readFileSync(encPath);
   if (blob.length < 3 + 12 + 16 || blob.slice(0, 3).toString() !== 'VF1') {
     throw new Error('bad catalog envelope');
   }
@@ -47,14 +49,16 @@ function decrypt() {
   decipher.setAuthTag(tag);
   const gz = Buffer.concat([decipher.update(data), decipher.final()]);
   const json = zlib.gunzipSync(gz);
-  // refresh fetched_at so max-age не режет сразу после деплоя
   const catalog = JSON.parse(json.toString('utf8'));
   catalog.fetched_at = new Date().toISOString();
+  catalog.provider = 'admitad';
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(catalog));
   console.log(
     '[prepare-catalog] decrypted ok, items=',
-    Array.isArray(catalog.items) ? catalog.items.length : 0
+    Array.isArray(catalog.items) ? catalog.items.length : 0,
+    'from',
+    path.relative(ROOT, encPath)
   );
 }
 

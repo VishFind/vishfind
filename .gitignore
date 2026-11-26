@@ -24,13 +24,10 @@ images (1).jpg
 # Локальный счётчик платного этапа (не для production-профилей)
 data/paid-call-stage.json
 
-# Импортированный каталог Takprodam / Admitad (партнёрские данные, не в Git)
+# Старый путь Takprodam-каталога (больше не используем)
 data/takprodam-catalog/**
-!data/takprodam-catalog/.gitkeep
-!data/takprodam-catalog/catalog.json.gz.enc
-data/takprodam-catalog/.auth-header-b64
 
-# Admitad / CPA фиды и собранный каталог (секреты в URL, не в Git)
+# Admitad / CPA фиды (сырые XML и plaintext catalog — не в Git)
 data/admitad-feeds/raw/
 data/admitad-feeds/urls.local.json
 data/admitad-feeds/catalog.json
@@ -41,6 +38,7 @@ data/admitad-feeds/*.csv
 data/admitad-feeds/*.zip
 !data/admitad-feeds/.gitkeep
 !data/admitad-feeds/urls.local.example.json
+!data/admitad-feeds/catalog.json.gz.enc
 
 # Снимки рабочей копии (секреты в них не кладём, в Git тоже)
 archives/
