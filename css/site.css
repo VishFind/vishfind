@@ -1883,15 +1883,20 @@ html {
   color: var(--ink);
   box-shadow: none;
   font-weight: 550;
+  /* Не прыгать от .btn:hover translateY / active scale */
+  transform: none !important;
+  vertical-align: middle;
+  box-sizing: border-box;
 }
 .criteria-chip:hover {
   background: color-mix(in srgb, var(--accent) 12%, var(--glass-strong));
   border-color: color-mix(in srgb, var(--accent) 40%, var(--stroke));
-  transform: none;
+  transform: none !important;
 }
 .criteria-chip.is-active {
+  /* border остаётся 1px — иначе чип «Тип одежды» съезжает на десктопе */
   background: color-mix(in srgb, var(--accent) 22%, var(--glass-strong));
-  border: 2px solid var(--accent-2);
+  border-color: var(--accent-2);
   color: var(--ink);
   font-weight: 700;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);

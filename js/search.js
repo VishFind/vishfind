@@ -1877,10 +1877,13 @@
     return box;
   }
 
-  /** Статичные рекламные слоты у подвала — не результаты поиска и не фильтр по запросу. */
+  /** Статичные рекламные слоты у подвала — временно выключены. */
   function renderAdPlacement() {
+    const block = document.getElementById('ad-placement');
+    if (block) block.hidden = true;
     if (!adBody) return;
     adBody.replaceChildren();
+    return;
     const list = el('ul', 'ad-slots');
     const slots = [
       { title: 'Рекламное место', note: 'Демонстрация размещения' },
