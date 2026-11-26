@@ -2131,9 +2131,14 @@ async function handleOfferStatus(req, res) {
 // Запуск HTTP-сервера — только при прямом запуске (npm start / node server.js).
 // При require('./server.js') из тестов сервер не поднимается, а экспортируются функции.
 if (require.main === module) {
-  if (config.basicAuth.enabled && (!config.basicAuth.user || !config.basicAuth.password)) {
-    logger.error('BASIC_AUTH_ENABLED=true, но логин или пароль пусты. Сервер не запущен.');
-    process.exit(1);
+  // На хостинге лучше поднять порт сразу: долгий prepare-catalog до listen
+  // даёт Timeweb «Container is restarting» (health не видит открытый PORT).
+  let basicAuthActive = !!config.basicAuth.enabled;
+  if (basicAuthActive && (!config.basicAuth.user || !config.basicAuth.password)) {
+    logger.error(
+      'BASIC_AUTH_ENABLED=true, но логин или пароль пусты — Basic Auth выключен, сервер стартует.'
+    );
+    basicAuthActive = false;
   }
 
   // Непойманные ошибки: логируем санитизированно и завершаем процесс,
@@ -2154,7 +2159,7 @@ if (require.main === module) {
         if ((req.method === 'GET' || req.method === 'HEAD') && p === '/api/healthz') {
           return sendMinimalHealth(req, res);
         }
-        if (basicAuthBlocks(req, res)) return;
+        if (basicAuthActive && basicAuthBlocks(req, res)) return;
         if (req.method === 'POST' && p === '/api/search') return await handleSearch(req, res);
         if (req.method === 'POST' && p === '/api/catalog/offer-status') return await handleOfferStatus(req, res);
         if (req.method === 'POST' && p === '/api/find') return await handleFind(req, res);
@@ -2173,9 +2178,17 @@ if (require.main === module) {
         ai_enabled: AI_ENABLED,
         photo_provider: PHOTO_PROVIDER,
         ebay_configured: ebayProvider.isConfigured(),
-        basic_auth: config.basicAuth.enabled,
+        basic_auth: basicAuthActive,
       });
       logger.info(`Провайдеры: ${providers.listProviders().map((p) => `${p.id}:${p.enabled ? 'on' : 'off'}`).join(', ')}`);
+      // Каталог после bind: карточки появятся на следующих запросах.
+      try {
+        require('./scripts/prepare-catalog').prepareCatalog();
+      } catch (e) {
+        logger.warn('prepare-catalog after listen failed', {
+          error: e && e.message ? e.message : String(e),
+        });
+      }
     });
 }
 

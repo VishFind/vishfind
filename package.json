@@ -2,10 +2,11 @@
   "name": "isearch-demo",
   "version": "1.0.0",
   "private": true,
-  "description": "iSearch — поиск редкой/винтажной одежды: разбор запроса и ссылки на площадки (Node.js без npm-зависимостей)",
+  "description": "VishFind — Node.js 18+ без npm-зависимостей (встроенный http, не Express). audited 1 package при npm ci — ожидаемо.",
   "main": "server.js",
+  "dependencies": {},
   "scripts": {
-    "start": "node scripts/prepare-catalog.js; node server.js",
+    "start": "node server.js",
     "encrypt-catalog": "node scripts/encrypt-catalog.js",
     "prepare-catalog": "node scripts/prepare-catalog.js",
     "test": "node --test",

@@ -95,12 +95,22 @@ function decrypt() {
   );
 }
 
-try {
-  decrypt();
-} catch (e) {
-  // Не exit(1): иначе Timeweb Apps крутит restart loop и не сканирует порт.
-  console.error(
-    '[prepare-catalog] failed (server will start without partner cards):',
-    e && e.message ? e.message : e
-  );
+function prepareCatalog() {
+  try {
+    decrypt();
+    return { ok: true };
+  } catch (e) {
+    // Не exit(1): иначе Timeweb Apps крутит restart loop и не сканирует порт.
+    console.error(
+      '[prepare-catalog] failed (server will start without partner cards):',
+      e && e.message ? e.message : e
+    );
+    return { ok: false, error: e && e.message ? e.message : String(e) };
+  }
 }
+
+if (require.main === module) {
+  prepareCatalog();
+}
+
+module.exports = { prepareCatalog, resolveOutPath };

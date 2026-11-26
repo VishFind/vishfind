@@ -259,43 +259,19 @@ test('при выключенной защите пароль в env не тре
   );
 });
 
-test('пустые настройки при включённой защите не открывают сервер', async () => {
+test('пустые настройки при включённой защите: сервер стартует без Basic Auth', async () => {
+  // Раньше был exit(1) — Timeweb уходил в restart loop. Теперь слушаем PORT без защиты.
   const cases = [
     { BASIC_AUTH_ENABLED: 'true', BASIC_AUTH_USER: '', BASIC_AUTH_PASSWORD: '' },
     { BASIC_AUTH_ENABLED: 'true', BASIC_AUTH_USER: USER, BASIC_AUTH_PASSWORD: '   ' },
     { BASIC_AUTH_ENABLED: 'true', BASIC_AUTH_USER: '', BASIC_AUTH_PASSWORD: PASS },
   ];
   for (const extra of cases) {
-    const port = await freePort();
-    const chunks = [];
-    const child = spawn(process.execPath, ['server.js'], {
-      cwd: ROOT,
-      env: childEnv(port, extra),
-      stdio: ['ignore', 'pipe', 'pipe'],
+    await withServer(extra, async (port) => {
+      const r = await fetchPath(port, 'GET', '/');
+      assert.equal(r.status, 200);
+      const text = await r.text();
+      assert.equal(text.includes(PASS), false);
     });
-    child.stdout.on('data', (c) => chunks.push(c));
-    child.stderr.on('data', (c) => chunks.push(c));
-    const result = await new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        child.kill();
-        resolve({ code: 'timeout' });
-      }, 4000);
-      child.on('exit', (code) => {
-        clearTimeout(timer);
-        resolve({ code });
-      });
-    });
-    const out = Buffer.concat(chunks).toString('utf8');
-    assert.equal(result.code, 1);
-    assert.equal(out.includes(PASS), false);
-    let opened = false;
-    try {
-      const r = await fetch(`http://127.0.0.1:${port}/`);
-      opened = r.status === 200;
-      await r.arrayBuffer();
-    } catch (_) {
-      opened = false;
-    }
-    assert.equal(opened, false);
   }
 });
