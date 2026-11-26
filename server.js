@@ -174,9 +174,10 @@ const SECURITY_HEADERS = {
   // inline script темы в HTML — нужен 'unsafe-inline' для script
   'Content-Security-Policy':
     "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; " +
-    // CDN изображений из фида Takprodam (без произвольного прокси и без отключения CSP).
-    // Hosts подтверждены probe'ом image_url: Ozon, Lamoda.
-    "img-src 'self' data: blob: https://ir.ozone.ru https://a.lmcdn.ru; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; " +
+    // Фото товаров только по https: CDN магазинов из фидов Admitad/партнёров меняются
+    // (shoppinglive, finnflare, waistline, 2mood, yandex avatars и др.) — whitelist хостов
+    // быстро устаревает и на телефоне карточки остаются без картинок.
+    "img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; " +
     "connect-src 'self'; font-src 'self'; object-src 'none'",
 };
 
