@@ -1981,7 +1981,7 @@ async function handleHealth(res) {
     name: 'vishfind',
     version: config.version,
     // Метка релиза для проверки, что Timeweb поднял нужный билд (не старый rollback).
-    release: 'partner-cards-rank-2026-11-26c',
+    release: 'partner-cards-rank-2026-11-26d',
     env: config.env,
     uptime_sec: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
@@ -2134,11 +2134,12 @@ async function handleOfferStatus(req, res) {
   return send(res, 200, { statuses });
 }
 
-// Запуск HTTP-сервера — только при прямом запуске (npm start / node server.js).
-// При require('./server.js') из тестов сервер не поднимается, а экспортируются функции.
-if (require.main === module) {
-  // На хостинге лучше поднять порт сразу: долгий prepare-catalog до listen
-  // даёт Timeweb «Container is restarting» (health не видит открытый PORT).
+/**
+ * HTTP-обработчик для boot.js (Timeweb) и прямого node server.js.
+ * Health без Basic Auth — иначе App Platform откатывает деплой.
+ */
+function createRequestListener(opts) {
+  const release = (opts && opts.release) || 'partner-cards-rank-2026-11-26d';
   let basicAuthActive = !!config.basicAuth.enabled;
   if (basicAuthActive && (!config.basicAuth.user || !config.basicAuth.password)) {
     logger.error(
@@ -2147,72 +2148,65 @@ if (require.main === module) {
     basicAuthActive = false;
   }
 
-  // Непойманные ошибки: логируем санитизированно и завершаем процесс,
-  // чтобы платформа перезапустила сервис (без «полуживого» состояния).
+  return async function requestListener(req, res) {
+    try {
+      const p = (req.url || '').split('?')[0];
+      if (
+        (req.method === 'GET' || req.method === 'HEAD') &&
+        (p === '/api/healthz' || p === '/api/health' || p === '/health' || p === '/ping')
+      ) {
+        if (p === '/api/health') return await handleHealth(res);
+        return sendMinimalHealth(req, res);
+      }
+      if (basicAuthActive && basicAuthBlocks(req, res)) return;
+      if (req.method === 'POST' && p === '/api/search') return await handleSearch(req, res);
+      if (req.method === 'POST' && p === '/api/catalog/offer-status') {
+        return await handleOfferStatus(req, res);
+      }
+      if (req.method === 'POST' && p === '/api/find') return await handleFind(req, res);
+      if (req.method === 'GET' || req.method === 'HEAD') return serveStatic(req, res);
+      send(res, 405, 'Method not allowed');
+    } catch (e) {
+      logger.error('unhandled request error', logger.errorToMeta(e));
+      if (!res.headersSent) send(res, 500, { error: 'Внутренняя ошибка сервера' });
+    }
+  };
+}
+
+// Прямой запуск: node server.js (локально). На Timeweb — npm start → boot.js.
+if (require.main === module) {
   process.on('uncaughtException', (e) => {
+    console.error('uncaughtException', e && e.stack ? e.stack : e);
     logger.error('uncaughtException', logger.errorToMeta(e));
     process.exit(1);
   });
   process.on('unhandledRejection', (e) => {
+    console.error('unhandledRejection', e && e.stack ? e.stack : e);
     logger.error('unhandledRejection', logger.errorToMeta(e));
     process.exit(1);
   });
 
-  http
-    .createServer(async (req, res) => {
-      try {
-        const p = (req.url || '').split('?')[0];
-        // Health без Basic Auth: иначе Timeweb healthcheck получает 401,
-        // деплой откатывается, и на проде остаётся старый билд без карточек.
-        // Алиасы /health /ping — частые пути в панели App Platform.
-        if (
-          (req.method === 'GET' || req.method === 'HEAD') &&
-          (p === '/api/healthz' || p === '/api/health' || p === '/health' || p === '/ping')
-        ) {
-          if (p === '/api/health') return await handleHealth(res);
-          return sendMinimalHealth(req, res);
-        }
-        if (basicAuthActive && basicAuthBlocks(req, res)) return;
-        if (req.method === 'POST' && p === '/api/search') return await handleSearch(req, res);
-        if (req.method === 'POST' && p === '/api/catalog/offer-status') return await handleOfferStatus(req, res);
-        if (req.method === 'POST' && p === '/api/find') return await handleFind(req, res);
-        if (req.method === 'GET' || req.method === 'HEAD') return serveStatic(req, res);
-        send(res, 405, 'Method not allowed');
-      } catch (e) {
-        logger.error('unhandled request error', logger.errorToMeta(e));
-        if (!res.headersSent) send(res, 500, { error: 'Внутренняя ошибка сервера' });
-      }
-    })
-    .listen(PORT, HOST, () => {
-      const shown = HOST === '0.0.0.0' ? 'localhost' : HOST;
-      // Plain console — сразу видно в логах Timeweb (не только JSON logger).
-      console.log(`[boot] VishFind listening on ${HOST}:${PORT} release=partner-cards-rank-2026-11-26c`);
-      logger.info(`VishFind запущен: http://${shown}:${PORT} (bind ${HOST})`, {
-        env: config.env,
-        ai_enabled: AI_ENABLED,
-        photo_provider: PHOTO_PROVIDER,
-        ebay_configured: ebayProvider.isConfigured(),
-        basic_auth: basicAuthActive,
-        release: 'partner-cards-rank-2026-11-26c',
-      });
-      logger.info(`Провайдеры: ${providers.listProviders().map((p) => `${p.id}:${p.enabled ? 'on' : 'off'}`).join(', ')}`);
-      // Каталог ПОСЛЕ bind и вне текущего тика: не блокируем healthcheck Timeweb.
-      setTimeout(() => {
-        try {
-          const res = require('./scripts/prepare-catalog').prepareCatalog();
-          console.log('[boot] prepare-catalog done', res && res.ok ? 'ok' : 'skip/fail', res && res.itemCount);
-        } catch (e) {
-          console.error('[boot] prepare-catalog error', e && e.message ? e.message : e);
-          logger.warn('prepare-catalog after listen failed', {
-            error: e && e.message ? e.message : String(e),
-          });
-        }
-      }, 25);
+  const listener = createRequestListener({ release: 'partner-cards-rank-2026-11-26d' });
+  http.createServer(listener).listen(PORT, HOST, () => {
+    console.log(`[boot] VishFind listening on ${HOST}:${PORT} release=partner-cards-rank-2026-11-26d`);
+    logger.info(`VishFind запущен (bind ${HOST}:${PORT})`, {
+      env: config.env,
+      release: 'partner-cards-rank-2026-11-26d',
     });
+    setTimeout(() => {
+      try {
+        const res = require('./scripts/prepare-catalog').prepareCatalog();
+        console.log('[boot] prepare-catalog done', res && res.ok ? 'ok' : 'skip/fail', res && res.itemCount);
+      } catch (e) {
+        console.error('[boot] prepare-catalog error', e && e.message ? e.message : e);
+      }
+    }, 25);
+  });
 }
 
-// Экспорт только для юнит-тестов (приоритет текста над фото). Поведение HTTP не меняется.
+// Экспорт для тестов и boot.js.
 module.exports = {
   mergeVisionIntoParsed,
   applyAttributes,
+  createRequestListener,
 };
