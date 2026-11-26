@@ -1980,9 +1980,12 @@ async function handleHealth(res) {
     ok: true,
     name: 'vishfind',
     version: config.version,
+    // Метка релиза для проверки, что Timeweb поднял нужный билд (не старый rollback).
+    release: 'partner-cards-2026-11-26',
     env: config.env,
     uptime_sec: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
+    partner_catalog_enabled: !!config.partnerCatalog.enabled,
     ai_enabled: AI_ENABLED,
     text_search_ok: true,
     photo_provider: PHOTO_PROVIDER,
@@ -2156,14 +2159,16 @@ if (require.main === module) {
     .createServer(async (req, res) => {
       try {
         const p = (req.url || '').split('?')[0];
-        if ((req.method === 'GET' || req.method === 'HEAD') && p === '/api/healthz') {
-          return sendMinimalHealth(req, res);
+        // Health без Basic Auth: иначе Timeweb healthcheck получает 401,
+        // деплой откатывается, и на проде остаётся старый билд без карточек.
+        if ((req.method === 'GET' || req.method === 'HEAD') && (p === '/api/healthz' || p === '/api/health')) {
+          if (p === '/api/healthz') return sendMinimalHealth(req, res);
+          return await handleHealth(res);
         }
         if (basicAuthActive && basicAuthBlocks(req, res)) return;
         if (req.method === 'POST' && p === '/api/search') return await handleSearch(req, res);
         if (req.method === 'POST' && p === '/api/catalog/offer-status') return await handleOfferStatus(req, res);
         if (req.method === 'POST' && p === '/api/find') return await handleFind(req, res);
-        if (req.method === 'GET' && p === '/api/health') return await handleHealth(res);
         if (req.method === 'GET' || req.method === 'HEAD') return serveStatic(req, res);
         send(res, 405, 'Method not allowed');
       } catch (e) {

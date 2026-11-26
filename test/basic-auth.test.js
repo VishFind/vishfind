@@ -144,7 +144,6 @@ test('без учётных данных страницы и API закрыты,
       ['GET', '/css/site.css'],
       ['GET', '/js/search.js'],
       ['GET', '/images/favicon.svg'],
-      ['GET', '/api/health'],
       ['POST', '/api/search'],
       ['POST', '/api/find'],
     ];
@@ -170,10 +169,16 @@ test('без учётных данных страницы и API закрыты,
     assert.equal(early.status, 401);
     assert.equal(early.body.includes(PASS), false);
 
-    const health = await fetchPath(port, 'GET', '/api/healthz');
+    // /api/health и /api/healthz открыты без логина — иначе App Platform откатывает деплой.
+    const healthz = await fetchPath(port, 'GET', '/api/healthz');
+    assert.equal(healthz.status, 200);
+    assert.deepEqual(await healthz.json(), { ok: true });
+
+    const health = await fetchPath(port, 'GET', '/api/health');
     assert.equal(health.status, 200);
-    const body = await health.json();
-    assert.deepEqual(body, { ok: true });
+    const healthBody = await health.json();
+    assert.equal(healthBody.ok, true);
+    assert.equal(healthBody.release, 'partner-cards-2026-11-26');
   });
 });
 
