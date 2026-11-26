@@ -273,7 +273,7 @@ test('без бренда в запросе: микс разных брендо�
   assert.equal(res.mix.mode, 'brand_diverse');
 });
 
-test('с брендом в запросе: 3 своего и 2 одного альтернативного', () => {
+test('с брендом в запросе: 3 своего и по 1 с разных альтернативных', () => {
   const res = matchNeeds(
     multiBrandBagCatalog(),
     {
@@ -290,6 +290,6 @@ test('с брендом в запросе: 3 своего и 2 одного ал
   assert.equal(own.length, 3);
   assert.equal(alt.length, 2);
   const altBrands = new Set(alt.map((it) => String(it.brand || it.marketplace)));
-  assert.equal(altBrands.size, 1, [...altBrands].join(','));
+  assert.equal(altBrands.size, 2, [...altBrands].join(','));
   assert.equal(res.mix.mode, 'brand_primary_alt');
 });
