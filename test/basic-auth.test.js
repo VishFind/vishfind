@@ -52,12 +52,16 @@ function childEnv(port, extra) {
   };
 }
 
-async function waitHealth(port, timeoutMs = 8000) {
+async function waitHealth(port, timeoutMs = 15000) {
   const t0 = Date.now();
   while (Date.now() - t0 < timeoutMs) {
     try {
+      // Early-boot health тоже 200 — ждём ответ app-server: ровно {"ok":true}.
       const r = await fetch(`http://127.0.0.1:${port}/api/healthz`);
-      if (r.ok) return;
+      if (r.ok) {
+        const body = await r.json();
+        if (body && body.ok === true && Object.keys(body).length === 1) return;
+      }
     } catch (_) {
       /* wait */
     }
@@ -178,7 +182,7 @@ test('без учётных данных страницы и API закрыты,
     assert.equal(health.status, 200);
     const healthBody = await health.json();
     assert.equal(healthBody.ok, true);
-    assert.equal(healthBody.release, 'partner-cards-rank-2026-11-26d');
+    assert.equal(healthBody.release, 'partner-cards-rank-2026-11-26e');
   });
 });
 
