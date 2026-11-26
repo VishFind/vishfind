@@ -5,7 +5,7 @@
   "description": "iSearch — поиск редкой/винтажной одежды: разбор запроса и ссылки на площадки (Node.js без npm-зависимостей)",
   "main": "server.js",
   "scripts": {
-    "start": "node scripts/prepare-catalog.js && node server.js",
+    "start": "node scripts/prepare-catalog.js; node server.js",
     "encrypt-catalog": "node scripts/encrypt-catalog.js",
     "prepare-catalog": "node scripts/prepare-catalog.js",
     "test": "node --test",
