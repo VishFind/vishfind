@@ -1981,7 +1981,7 @@ async function handleHealth(res) {
     name: 'vishfind',
     version: config.version,
     // Метка релиза для проверки, что Timeweb поднял нужный билд (не старый rollback).
-    release: 'partner-cards-2026-11-26',
+    release: 'partner-cards-rank-2026-11-26b',
     env: config.env,
     uptime_sec: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
@@ -2161,9 +2161,13 @@ if (require.main === module) {
         const p = (req.url || '').split('?')[0];
         // Health без Basic Auth: иначе Timeweb healthcheck получает 401,
         // деплой откатывается, и на проде остаётся старый билд без карточек.
-        if ((req.method === 'GET' || req.method === 'HEAD') && (p === '/api/healthz' || p === '/api/health')) {
-          if (p === '/api/healthz') return sendMinimalHealth(req, res);
-          return await handleHealth(res);
+        // Алиасы /health /ping — частые пути в панели App Platform.
+        if (
+          (req.method === 'GET' || req.method === 'HEAD') &&
+          (p === '/api/healthz' || p === '/api/health' || p === '/health' || p === '/ping')
+        ) {
+          if (p === '/api/health') return await handleHealth(res);
+          return sendMinimalHealth(req, res);
         }
         if (basicAuthActive && basicAuthBlocks(req, res)) return;
         if (req.method === 'POST' && p === '/api/search') return await handleSearch(req, res);
