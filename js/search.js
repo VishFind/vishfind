@@ -1653,8 +1653,20 @@
   }
 
   function appendNeedUnderstood(body, need) {
-    if (!need || !need.understood || !body) return;
+    if (!need || !body) return;
+    const ranking = need.ranking;
+    if (ranking && Array.isArray(ranking.criteria) && ranking.criteria.length) {
+      body.appendChild(
+        el(
+          'p',
+          'understood-phrase',
+          'Критерии лучших: ' +
+            ranking.criteria.map((c) => c.label || c.id).filter(Boolean).join(' · ')
+        )
+      );
+    }
     const u = need.understood;
+    if (!u) return;
     if (u.category) body.appendChild(el('p', 'understood-phrase', 'Категория: ' + u.category));
     if (u.must && u.must.length) {
       body.appendChild(

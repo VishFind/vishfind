@@ -270,7 +270,7 @@ test('без бренда в запросе: микс разных брендо�
   assert.equal(res.items.length, 5);
   const brands = res.items.map((it) => String(it.brand || it.marketplace));
   assert.equal(new Set(brands).size, 5, brands.join(','));
-  assert.equal(res.mix.mode, 'brand_diverse');
+  assert.equal(res.mix.mode, 'best_diverse');
 });
 
 test('с брендом в запросе: 3 своего и по 1 с разных альтернативных', () => {
@@ -292,4 +292,125 @@ test('с брендом в запросе: 3 своего и по 1 с разн�
   const altBrands = new Set(alt.map((it) => String(it.brand || it.marketplace)));
   assert.equal(altBrands.size, 2, [...altBrands].join(','));
   assert.equal(res.mix.mode, 'brand_primary_alt');
+});
+
+test('без бренда: не схема 3+2 одного доминирующего магазина', () => {
+  const mk = (id, marketplace, title) => ({
+    schema_version: 2,
+    provider: 'admitad',
+    source_id: 1,
+    product_id: id,
+    marketplace,
+    marketplace_key: String(marketplace).toLowerCase().replace(/\s+/g, '_'),
+    brand: null,
+    store_title: marketplace,
+    title,
+    price: 2000 + id,
+    currency: 'RUB',
+    category_title: 'Одежда',
+    tracking_link: 'https://example.test/' + id,
+    external_link: 'https://shop.test/' + id,
+    image_url: 'https://img.test/' + id + '.jpg',
+    legal_text: 'Реклама',
+    fetched_at: '2026-11-15T12:33:44.108Z',
+  });
+  const catalog = {
+    fetched_at: '2026-11-15T12:33:44.108Z',
+    marketplaces: {
+      finn_flare: { status: 'ok', last_success_at: '2026-11-15T12:33:44.108Z' },
+      mood: { status: 'ok', last_success_at: '2026-11-15T12:33:44.108Z' },
+    },
+    items: [
+      mk(1, 'Finn Flare', 'Куртка джинсовая синяя 1'),
+      mk(2, 'Finn Flare', 'Куртка джинсовая синяя 2'),
+      mk(3, 'Finn Flare', 'Куртка джинсовая синяя 3'),
+      mk(4, 'Finn Flare', 'Куртка джинсовая синяя 4'),
+      mk(5, 'Finn Flare', 'Куртка джинсовая синяя 5'),
+      mk(6, '2MOOD', 'Куртка джинсовая чёрная Mood'),
+    ],
+  };
+  const res = matchNeeds(
+    catalog,
+    { search_phrase: 'куртка', category: 'куртка' },
+    { max: 5, isProd: false, raw_query: 'куртка синяя' }
+  );
+  assert.ok(res.items.length >= 2);
+  const byBrand = {};
+  for (const it of res.items) {
+    const k = String(it.brand || it.marketplace);
+    byBrand[k] = (byBrand[k] || 0) + 1;
+  }
+  for (const [brand, n] of Object.entries(byBrand)) {
+    assert.ok(n <= 2, brand + '=' + n);
+  }
+  assert.equal(res.mix.mode, 'best_diverse');
+});
+
+test('джинсы не подменяются джинсовой курткой', () => {
+  const mk = (id, marketplace, title) => ({
+    schema_version: 2,
+    provider: 'admitad',
+    source_id: 1,
+    product_id: id,
+    marketplace,
+    marketplace_key: String(marketplace).toLowerCase().replace(/\s+/g, '_'),
+    brand: marketplace,
+    store_title: marketplace,
+    title,
+    price: 3000 + id,
+    currency: 'RUB',
+    category_title: 'Одежда',
+    tracking_link: 'https://example.test/' + id,
+    external_link: 'https://shop.test/' + id,
+    image_url: 'https://img.test/' + id + '.jpg',
+    legal_text: 'Реклама',
+    fetched_at: '2026-11-15T12:33:44.108Z',
+  });
+  const catalog = {
+    fetched_at: '2026-11-15T12:33:44.108Z',
+    marketplaces: {
+      finn_flare: { status: 'ok', last_success_at: '2026-11-15T12:33:44.108Z' },
+      mood: { status: 'ok', last_success_at: '2026-11-15T12:33:44.108Z' },
+    },
+    items: [
+      mk(1, 'Finn Flare', 'Куртка джинсовая синяя'),
+      mk(2, 'Finn Flare', 'Джинсы синие slim'),
+      mk(3, '2MOOD', 'Брюки джинсовые голубые'),
+      mk(4, 'Finn Flare', 'Джинсовая куртка оверсайз'),
+    ],
+  };
+  const res = matchNeeds(
+    catalog,
+    { search_phrase: 'джинсы синие', category: 'джинсы', color: 'синий', colors: ['синий'] },
+    { max: 5, isProd: false, raw_query: 'джинсы синие' }
+  );
+  assert.ok(res.items.length >= 1, 'ожидались джинсы');
+  for (const it of res.items) {
+    assert.doesNotMatch(String(it.title), /куртк/i, it.title);
+  }
+});
+
+test('критерии лучших попадают в ответ', () => {
+  const res = matchNeeds(
+    multiBrandBagCatalog(),
+    { search_phrase: 'сумка', category: 'сумка' },
+    {
+      max: 5,
+      isProd: false,
+      raw_query: 'кожаная сумка',
+      ranking: {
+        source: 'rules',
+        focus_category: 'сумка',
+        criteria: [
+          { id: 'relevance', label: 'Соответствие запросу', weight: 2 },
+          { id: 'price', label: 'Цена', weight: 1 },
+          { id: 'quality_signals', label: 'Признаки качества в названии', weight: 1 },
+          { id: 'material', label: 'Материал', weight: 1.4 },
+          { id: 'capacity', label: 'Вместимость / формат', weight: 1.2 },
+        ],
+      },
+    }
+  );
+  assert.equal(res.ranking.source, 'rules');
+  assert.equal(res.ranking.criteria.length, 5);
 });

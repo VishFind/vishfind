@@ -41,6 +41,7 @@ const ebayProvider = createEbayProvider({
 });
 const takprodamCatalog = require('./lib/takprodam-catalog');
 const needMatch = require('./lib/need-match');
+const needCriteriaAi = require('./lib/need-criteria-ai');
 
 const ROOT = __dirname;
 
@@ -1022,13 +1023,43 @@ async function handleSearch(req, res) {
             .filter((id) => typeof id === 'string' && id.length <= 160)
             .slice(0, 40)
         : [];
+      // На сайте (production) по умолчанию — бесплатные критерии на сервере (rules):
+      // каталог и запрос наружу не уходят. Локальный Qwen — только на вашем ПК.
+      const criteriaMode = needCriteriaAi.resolveNeedCriteriaMode({
+        needCriteriaProvider: config.needCriteriaProvider,
+        isProd: config.isProd,
+        aiEnabled: AI_ENABLED,
+        photoProvider: PHOTO_PROVIDER,
+        timewebConfigured: !!TIMEWEB_API_KEY,
+      });
+      let ranking = needCriteriaAi.fallbackNeedCriteria(query, parsed);
+      if (criteriaMode === 'ollama') {
+        try {
+          ranking = await needCriteriaAi.suggestNeedCriteria({
+            query,
+            parsed,
+            ollamaChat,
+            model: MODEL,
+            provider: 'ollama',
+            external: false,
+            timeoutMs: Math.min(6000, OLLAMA_TIMEOUT_MS || 6000),
+          });
+        } catch (_) {
+          /* остаёмся на rules */
+        }
+      }
       partnerMeta.need_match = needMatch.matchNeeds(loaded.catalog, parsed, {
         max: 5,
         isProd: config.isProd,
         maxAgeHours: config.partnerCatalog.catalogMaxAgeHours,
         exclude_ids: excludeIds,
         raw_query: query,
+        ranking,
       });
+      if (partnerMeta.need_match && partnerMeta.need_match.ranking) {
+        partnerMeta.need_match.ranking.mode = criteriaMode;
+        partnerMeta.need_match.ranking.external = !!ranking.external;
+      }
     }
   }
 
@@ -1981,7 +2012,7 @@ async function handleHealth(res) {
     name: 'vishfind',
     version: config.version,
     // Метка релиза для проверки, что Timeweb поднял нужный билд (не старый rollback).
-    release: 'partner-cards-rank-2026-11-26h',
+    release: 'partner-cards-rank-2026-11-27b',
     env: config.env,
     uptime_sec: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
@@ -1989,6 +2020,25 @@ async function handleHealth(res) {
     partner_catalog_ready: !!(
       takprodamCatalog.getRuntimeCatalog && takprodamCatalog.getRuntimeCatalog()
     ),
+    need_criteria: (() => {
+      const mode = needCriteriaAi.resolveNeedCriteriaMode({
+        needCriteriaProvider: config.needCriteriaProvider,
+        isProd: config.isProd,
+        aiEnabled: AI_ENABLED,
+        photoProvider: PHOTO_PROVIDER,
+        timewebConfigured: !!TIMEWEB_API_KEY,
+      });
+      return {
+        mode,
+        external: mode === 'timeweb',
+        note:
+          mode === 'rules'
+            ? 'Бесплатные критерии лучших на сервере сайта; данные наружу не уходят'
+            : mode === 'ollama'
+              ? 'Локальный Qwen на машине разработчика'
+              : 'Timeweb AI: уходит только короткий текст запроса',
+      };
+    })(),
     ai_enabled: AI_ENABLED,
     text_search_ok: true,
     photo_provider: PHOTO_PROVIDER,
@@ -2139,7 +2189,7 @@ async function handleOfferStatus(req, res) {
  * Health без Basic Auth — иначе App Platform откатывает деплой.
  */
 function createRequestListener(opts) {
-  const release = (opts && opts.release) || 'partner-cards-rank-2026-11-26h';
+  const release = (opts && opts.release) || 'partner-cards-rank-2026-11-27b';
   let basicAuthActive = !!config.basicAuth.enabled;
   if (basicAuthActive && (!config.basicAuth.user || !config.basicAuth.password)) {
     logger.error(

@@ -38,9 +38,21 @@ function resolveOutPath() {
 }
 
 function keyFromEnv() {
-  const raw = String(process.env.CATALOG_DECRYPT_KEY || '')
+  let raw = String(process.env.CATALOG_DECRYPT_KEY || '')
     .trim()
     .replace(/^["']|["']$/g, '');
+  // Локально: тот же файл, что пишет encrypt-catalog.js (в .gitignore).
+  if (!raw) {
+    try {
+      raw = String(
+        fs.readFileSync(path.join(FEEDS_LOCAL, 'CATALOG_DECRYPT_KEY.local'), 'utf8')
+      )
+        .trim()
+        .replace(/^["']|["']$/g, '');
+    } catch (_) {
+      /* нет локального ключа */
+    }
+  }
   if (!raw) return null;
   try {
     const b = Buffer.from(raw, 'base64');
