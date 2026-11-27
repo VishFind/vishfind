@@ -273,6 +273,57 @@ test('без бренда в запросе: микс разных брендо�
   assert.equal(res.mix.mode, 'best_diverse');
 });
 
+test('без бренда: крупные фиды не вытесняют остальные магазины из пула', () => {
+  const mk = (id, marketplace, title) => ({
+    schema_version: 2,
+    provider: 'admitad',
+    source_id: 1,
+    product_id: id,
+    marketplace,
+    marketplace_key: String(marketplace).toLowerCase().replace(/\s+/g, '_'),
+    brand: null,
+    store_title: marketplace,
+    title,
+    price: 2000 + id,
+    currency: 'RUB',
+    category_title: 'Одежда',
+    tracking_link: 'https://example.test/' + id,
+    external_link: 'https://shop.test/' + id,
+    image_url: 'https://img.test/' + id + '.jpg',
+    legal_text: 'Реклама',
+    fetched_at: '2026-11-15T12:33:44.108Z',
+  });
+  const items = [];
+  let id = 1;
+  for (let i = 0; i < 40; i++) items.push(mk(id++, 'Finn Flare', 'Куртка зимняя FF ' + i));
+  for (let i = 0; i < 40; i++) items.push(mk(id++, 'Shopping Live', 'Куртка зимняя SL ' + i));
+  items.push(mk(id++, '2MOOD', 'Куртка зимняя Mood'));
+  items.push(mk(id++, 'Waistline RU', 'Куртка зимняя Waist'));
+  items.push(mk(id++, 'Rieker', 'Куртка зимняя Rieker'));
+  const catalog = {
+    fetched_at: '2026-11-15T12:33:44.108Z',
+    marketplaces: {
+      finn_flare: { status: 'ok', last_success_at: '2026-11-15T12:33:44.108Z' },
+      shopping_live: { status: 'ok', last_success_at: '2026-11-15T12:33:44.108Z' },
+      '2mood': { status: 'ok', last_success_at: '2026-11-15T12:33:44.108Z' },
+      waistline: { status: 'ok', last_success_at: '2026-11-15T12:33:44.108Z' },
+      rieker: { status: 'ok', last_success_at: '2026-11-15T12:33:44.108Z' },
+    },
+    items,
+  };
+  const res = matchNeeds(
+    catalog,
+    { search_phrase: 'куртка', category: 'куртка' },
+    { max: 5, isProd: false, raw_query: 'куртка' }
+  );
+  assert.equal(res.items.length, 5);
+  const names = new Set(res.items.map((it) => String(it.brand || it.marketplace)));
+  assert.equal(names.size, 5, [...names].join(','));
+  assert.ok(names.has('2MOOD'));
+  assert.ok(names.has('Waistline RU'));
+  assert.ok(names.has('Rieker'));
+});
+
 test('с брендом в запросе: 3 своего и по 1 с разных альтернативных', () => {
   const res = matchNeeds(
     multiBrandBagCatalog(),
