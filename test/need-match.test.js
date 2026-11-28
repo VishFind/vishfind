@@ -270,7 +270,7 @@ test('без бренда в запросе: микс разных брендо�
   assert.equal(res.items.length, 5);
   const brands = res.items.map((it) => String(it.brand || it.marketplace));
   assert.equal(new Set(brands).size, 5, brands.join(','));
-  assert.equal(res.mix.mode, 'best_diverse');
+  assert.equal(res.mix.mode, 'best_by_criteria');
 });
 
 test('без бренда: крупные фиды не вытесняют остальные магазины из пула', () => {
@@ -394,7 +394,7 @@ test('без бренда: не схема 3+2 одного доминирующ
   for (const [brand, n] of Object.entries(byBrand)) {
     assert.ok(n <= 2, brand + '=' + n);
   }
-  assert.equal(res.mix.mode, 'best_diverse');
+  assert.equal(res.mix.mode, 'best_by_criteria');
 });
 
 test('джинсы не подменяются джинсовой курткой', () => {

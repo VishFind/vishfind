@@ -182,7 +182,7 @@ test('без учётных данных страницы и API закрыты,
     assert.equal(health.status, 200);
     const healthBody = await health.json();
     assert.equal(healthBody.ok, true);
-    assert.equal(healthBody.release, 'partner-cards-rank-2026-11-27c');
+    assert.equal(healthBody.release, 'partner-cards-best5-2026-11-28a');
   });
 });
 

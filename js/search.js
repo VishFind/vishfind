@@ -1722,22 +1722,30 @@
       ...new Set(visibleItems.map((o) => o.fetched_at).filter(Boolean).map((v) => formatFetchedAt(v))),
     ];
 
-    let mode = 'score';
+    const hasBestFor = visibleItems.some((o) => o && o.best_for && o.best_for.label);
+    let mode = hasBestFor ? 'best_for' : 'score';
     const tools = el('div', 'offer-tools');
-    const list = el('ul', 'offers-list');
+    const list = el('ul', 'offers-list' + (hasBestFor ? ' is-best-strip' : ''));
 
     function paint() {
-      const rows = visibleItems.slice().sort((a, b) => compareClientOffers(a, b, mode));
+      const rows =
+        mode === 'best_for'
+          ? visibleItems.slice()
+          : visibleItems.slice().sort((a, b) => compareClientOffers(a, b, mode));
       list.replaceChildren();
       rows.forEach((o) => {
         const li = el('li', 'offers-row is-real');
         li.dataset.offerKey = offerKey(o);
+        if (o.best_for && o.best_for.id) li.dataset.bestFor = String(o.best_for.id);
 
         const media = el('div', 'offers-media');
         appendOfferThumb(media, o.image_url);
         li.appendChild(media);
 
         const main = el('div', 'offers-main');
+        if (o.best_for && o.best_for.label) {
+          main.appendChild(el('p', 'offers-best-for', String(o.best_for.label)));
+        }
         // Имя бренда как в фиде/реестре (Finn Flare, 2MOOD…) — без перевода.
         const brandLabel = String(o.brand || o.marketplace || '').trim();
         main.appendChild(
@@ -1878,6 +1886,7 @@
       if (value === mode) btn.classList.add('is-on');
       tools.appendChild(btn);
     }
+    if (hasBestFor) tool('По критериям', 'best_for');
     tool('По релевантности', 'score');
     const comparablePrice = visibleItems.some(
       (o) => String(o.price_mode || '') === 'amount' && offerCurrency(o)

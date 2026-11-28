@@ -2167,6 +2167,79 @@ body.criteria-sheet-open {
     }
   }
 }
+
+/* Пять карточек «лучшие по критериям» — в одну линию */
+.offers-list.is-best-strip:has(.offers-row.is-real) {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+@container offers (max-width: 1099px) {
+  .offers-list.is-best-strip:has(.offers-row.is-real) {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 12px;
+    padding-bottom: 6px;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+  .offers-list.is-best-strip .offers-row.is-real {
+    flex: 0 0 min(220px, 78%);
+    scroll-snap-align: start;
+  }
+}
+@supports not (container-type: inline-size) {
+  @media (max-width: 1099px) {
+    .offers-list.is-best-strip:has(.offers-row.is-real) {
+      display: flex;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      gap: 12px;
+      padding-bottom: 6px;
+      scroll-snap-type: x mandatory;
+    }
+    .offers-list.is-best-strip .offers-row.is-real {
+      flex: 0 0 min(220px, 78%);
+      scroll-snap-align: start;
+    }
+  }
+}
+.offers-best-for {
+  margin: 0 0 6px;
+  padding: 4px 8px;
+  width: fit-content;
+  max-width: 100%;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+  color: var(--text);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent, #2a6f6a) 12%, var(--bg1));
+}
+.offers-row.is-real[data-best-for='price'] .offers-best-for {
+  border-color: color-mix(in srgb, #2f7d4a 55%, var(--stroke));
+  background: color-mix(in srgb, #2f7d4a 14%, var(--bg1));
+}
+.offers-row.is-real[data-best-for='warmth'] .offers-best-for,
+.offers-row.is-real[data-best-for='weather'] .offers-best-for {
+  border-color: color-mix(in srgb, #b45309 50%, var(--stroke));
+  background: color-mix(in srgb, #b45309 12%, var(--bg1));
+}
+.offers-row.is-real[data-best-for='quality_signals'] .offers-best-for,
+.offers-row.is-real[data-best-for='material'] .offers-best-for {
+  border-color: color-mix(in srgb, #4338ca 45%, var(--stroke));
+  background: color-mix(in srgb, #4338ca 10%, var(--bg1));
+}
+.offers-row.is-real[data-best-for='breathable'] .offers-best-for,
+.offers-row.is-real[data-best-for='comfort'] .offers-best-for,
+.offers-row.is-real[data-best-for='fit'] .offers-best-for {
+  border-color: color-mix(in srgb, #0e7490 50%, var(--stroke));
+  background: color-mix(in srgb, #0e7490 12%, var(--bg1));
+}
 .offers-row.is-real {
   display: flex;
   flex-direction: column;

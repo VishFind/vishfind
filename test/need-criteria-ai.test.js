@@ -6,6 +6,8 @@ const {
   fallbackNeedCriteria,
   suggestNeedCriteria,
   rankingExtraScore,
+  pickBestByCriteria,
+  scoreOfferForCriterion,
 } = require('../lib/need-criteria-ai');
 
 test('fallback: зимняя куртка даёт теплоту', () => {
@@ -78,4 +80,60 @@ test('на production auto → rules без внешних вызовов', () =
     }),
     'rules'
   );
+});
+
+test('pickBestByCriteria: разные бейджи и реальный лидер по цене', () => {
+  const ranking = fallbackNeedCriteria('джинсы', { category: 'джинсы' });
+  const rows = [
+    {
+      id: 'a',
+      title: 'Джинсы slim stretch хлопок',
+      price: 9000,
+      currency: 'RUB',
+      brand: 'A',
+      need_score: 40,
+    },
+    {
+      id: 'b',
+      title: 'Джинсы базовые',
+      price: 2500,
+      currency: 'RUB',
+      brand: 'B',
+      need_score: 35,
+    },
+    {
+      id: 'c',
+      title: 'Джинсы премиум натуральный хлопок',
+      price: 12000,
+      currency: 'RUB',
+      brand: 'C',
+      need_score: 38,
+    },
+    {
+      id: 'd',
+      title: 'Джинсы regular comfort',
+      price: 4500,
+      currency: 'RUB',
+      brand: 'D',
+      need_score: 42,
+    },
+    {
+      id: 'e',
+      title: 'Джинсы straight',
+      price: 5000,
+      currency: 'RUB',
+      brand: 'E',
+      need_score: 30,
+    },
+  ];
+  const picked = pickBestByCriteria(rows, ranking.criteria, 5);
+  assert.equal(picked.length, 5);
+  const labels = picked.map((p) => p.best_for && p.best_for.label).filter(Boolean);
+  assert.equal(new Set(labels).size, labels.length);
+  const priceWinner = picked.find((p) => p.best_for && p.best_for.id === 'price');
+  assert.ok(priceWinner);
+  assert.equal(priceWinner.id, 'b');
+  const cheapScore = scoreOfferForCriterion(rows[1], { id: 'price', weight: 1 });
+  const dearScore = scoreOfferForCriterion(rows[2], { id: 'price', weight: 1 });
+  assert.ok(cheapScore > dearScore);
 });

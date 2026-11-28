@@ -2012,7 +2012,7 @@ async function handleHealth(res) {
     name: 'vishfind',
     version: config.version,
     // Метка релиза для проверки, что Timeweb поднял нужный билд (не старый rollback).
-    release: 'partner-cards-rank-2026-11-27c',
+    release: 'partner-cards-best5-2026-11-28a',
     env: config.env,
     uptime_sec: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
@@ -2189,7 +2189,7 @@ async function handleOfferStatus(req, res) {
  * Health без Basic Auth — иначе App Platform откатывает деплой.
  */
 function createRequestListener(opts) {
-  const release = (opts && opts.release) || 'partner-cards-rank-2026-11-27c';
+  const release = (opts && opts.release) || 'partner-cards-best5-2026-11-28a';
   let basicAuthActive = !!config.basicAuth.enabled;
   if (basicAuthActive && (!config.basicAuth.user || !config.basicAuth.password)) {
     logger.error(
